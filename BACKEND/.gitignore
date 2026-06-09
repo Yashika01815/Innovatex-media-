@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+
+# Build Output
+dist/
+build/
+
+# Environment Files
+.env
+.env.local
+.env.development
+.env.staging
+.env.production
+
+# Keep example file
+!.env.example
