@@ -5,6 +5,7 @@ import compression from 'compression';
 import morgan from 'morgan';
 
 import leadRoutes from './modules/leads/lead/lead.routes.js';
+import pipelineRouter from './modules/pipeline/pipeline.routes.js';
 
 const app = express();
 
@@ -26,6 +27,7 @@ app.use(
     credentials: true,
   })
 );
+
 
 /*
 |--------------------------------------------------------------------------
@@ -83,6 +85,8 @@ app.get('/', (req, res) => {
 */
 
 app.use('/api/leads', leadRoutes);
+app.use('/api/pipeline',pipelineRouter)
+
 
 /*
 |--------------------------------------------------------------------------

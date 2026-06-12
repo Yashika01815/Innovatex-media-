@@ -88,9 +88,19 @@ export const leadService = {
 
     const updated = await leadRepository.updateById(ctx.tenantId, id, patch);
 
-    await activityService.log(ctx, id, ACTIVITY_TYPE.LEAD_UPDATED, {
-      message: 'Lead updated',
-      meta: { fields: Object.keys(patch) },
+    const fields = Object.keys(patch);
+
+    let activityType = ACTIVITY_TYPE.LEAD_UPDATED;
+    let activityMessage = 'Lead updated';
+
+    if (fields.includes('status')) {
+      activityType = 'Lead Status Updated';
+      activityMessage = `Lead status changed to ${patch.status}`;
+    }
+
+    await activityService.log(ctx, id, activityType, {
+      message: activityMessage,
+      meta: { fields },
     });
 
     if (

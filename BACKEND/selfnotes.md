@@ -195,7 +195,7 @@ Custom Webhook, Simulation Mode.
 
 12. **WhatsApp Analytics** ✅ — KPIs + charts (conversations over time, reply rate by campaign,
     template performance, delivery funnel).
-    
+
 13. **WhatsApp Settings** ✅ — mode/provider/token/IDs/webhook/verify token/sender; sync toggles;
     "Sync now" (🟡).
 
@@ -211,3 +211,21 @@ footer, buttons (6 types), **live WhatsApp phone preview**.
 `Draft → Submitted for Internal Review → {Internally Approved | Changes Requested | Rejected Internally}
 → Submitted to Provider → {Provider Approved | Provider Rejected} → Active ↔ Paused → Archived`.
 Active/Provider-Approved templates are usable in campaigns/nurture/manual/automation.
+
+
+
+
+
+
+
+
+
+
+
+
+## B6. Pipeline
+- ✅ 9-stage Kanban (New Lead, Qualified, Booked Call, Call Completed, Proposal Sent, Negotiation, Won, Lost, Nurture).
+
+**Drag-and-drop** (+ arrow fallback). Deal value, probability, owner, source.
+
+- ✅ Add/delete deal, owner filter, per-stage totals, win-rate KPI. Each move → lead status + tracking event.
