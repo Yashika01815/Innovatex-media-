@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { upload } from '../../../shared/middlewares/upload.middleware.js';
 
 import { leadController } from './lead.controller.js';
 import { validateCreateLead, validateUpdateLead } from './lead.validator.js';
@@ -24,7 +25,9 @@ router.use(withContext);
 
 // --- static collection-level routes (before "/:id") ---------------------
 router.get('/export', authorize(ACTIONS.EXPORT), exportController.exportCsv);
-router.post('/import', authorize(ACTIONS.IMPORT), importController.importCsv);
+// router.post('/import', authorize(ACTIONS.IMPORT), importController.importCsv);
+router.post('/import', authorize(ACTIONS.IMPORT), upload.single('file'), importController.importCsv
+);
 router.get('/constants', authorize(ACTIONS.READ), leadController.constants);
 
 // --- nested sub-resources ----------------------------------------------

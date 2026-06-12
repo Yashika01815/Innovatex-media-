@@ -61,3 +61,153 @@ Duplicate Detection
 ✅ Lead Updated
 ✅ Lead Archived
 ✅ Note Added
+
+
+
+
+**CORE LEAD CRUD**
+
+✅ Create Lead
+✅ Get All Leads
+✅ Get Lead By ID
+✅ Update Lead
+✅ Archive Lead (Soft Delete)
+
+**VALIDATION**
+
+✅ Create Lead Validation
+✅ Update Lead Validation
+✅ Email Validation
+✅ Status Validation
+✅ Temperature Validation
+✅ Qualification Score Validation
+✅ Unknown Field Validation
+
+**LEAD LISTING**
+
+✅ Pagination
+✅ Status Filter
+✅ Temperature Filter
+✅ Source Filter
+
+**SEARCH & QUERY ENGINE**
+
+✅ Search Architecture
+✅ Filter Architecture
+✅ Sort Architecture
+
+**NEED TESTING**
+
+🟡 Search API
+🟡 Sorting API
+
+**LEAD DETAIL DRAWER**
+
+✅ Lead Details API
+✅ Notes Count
+✅ Activities Count
+✅ Timeline Data
+
+**NOTES MODULE**
+
+✅ Add Note
+✅ Get Notes
+
+**ACTIVITIES MODULE**
+
+✅ Lead Created Activity
+✅ Lead Updated Activity
+✅ Lead Archived Activity
+✅ Note Added Activity
+✅ Get Activity Timeline
+
+**DUPLICATE DETECTION**
+
+✅ Duplicate Detection Service
+✅ Duplicate Check During Create
+✅ Duplicate Skip During Import
+
+**IMPORT MODULE**
+
+✅ JSON Import
+✅ CSV Text Import
+✅ CSV File Upload Import
+✅ Duplicate Skip Logic
+
+**SCORING MODULE**
+
+✅ Auto Qualification Score
+✅ Auto Temperature Calculation
+
+**ASSIGNMENT MODULE**
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## B4. WhatsApp Operating Panel (native + 3rd-party mode) — **flagship**
+Supports **Native InnovateX panel** and **third-party provider mode**. Providers (🟡 simulated via
+adapter layer): Native Meta Cloud API, WATI, Interakt, AiSensy, Gallabox, Twilio WhatsApp, 360dialog,
+Custom Webhook, Simulation Mode.
+
+**13 tabs:**
+1. **Inbox** ✅ — conversation list (search/filter),
+   thread (bubbles, status, simulate inbound, assign, tags, internal notes),
+   lead context panel (score, source/UTM, pipeline stage, payment status, response timer).
+   Conversation statuses: New, Open, Pending, Qualified, Booked, Won, Lost, Ghosted.
+
+2. **Contacts / Leads** ✅ — WA contacts with consent/opt-out/score.
+
+3. **Templates** ✅ — create/edit/duplicate; status-aware actions.
+
+4. **Template Approval** ✅ — full state machine (11 statuses), status timeline, approval comments.
+
+5. **Campaigns** ✅ — audience filter + approved template + recipient count; approve/schedule/send
+   (🟡 simulated metrics); metrics (sent/delivered/read/replied/failed/bookings/payments/revenue).
+
+6. **Nurture Messages** ✅ — WA steps across sequences.
+
+7. **AI Reply Assistant** ✅ — generate reply/booking/payment/objection/follow-up; rewrite shorter/
+   professional/persuasive; copy.
+
+8. **Broadcasts** ✅ — broadcast-flagged campaigns; exclude opted-out.
+
+9. **Automation Rules** ✅ — WA trigger→action toggles.
+
+10. **Opt-Out / Consent** ✅ — consent KPIs, suppression list, manual opt-out; keywords STOP/
+    UNSUBSCRIBE/CANCEL/NO/REMOVE; **sending to opted-out is blocked + logged**.
+
+11. **Delivery Logs** ✅ — per-message log (provider, recipient, status, retries, timestamps).
+
+12. **WhatsApp Analytics** ✅ — KPIs + charts (conversations over time, reply rate by campaign,
+    template performance, delivery funnel).
+    
+13. **WhatsApp Settings** ✅ — mode/provider/token/IDs/webhook/verify token/sender; sync toggles;
+    "Sync now" (🟡).
+
+**Composer** ✅: AI replies, rewrite tools, template insert, variable insert
+(`{{lead_name}}`, `{{company_name}}`, `{{offer_name}}`, `{{booking_link}}`, `{{payment_link}}`,
+`{{sales_rep_name}}`, `{{call_date}}`, `{{lead_problem}}`, `{{campaign_name}}`), schedule, send.
+On send: append message + update conversation + lead.last_contacted_at + delivery log + tracking event + toast.
+
+**Template Builder** ✅: name, category (10), language, header type, body (auto-detect `{{vars}}`),
+footer, buttons (6 types), **live WhatsApp phone preview**.
+
+**Template approval workflow (state machine):**
+`Draft → Submitted for Internal Review → {Internally Approved | Changes Requested | Rejected Internally}
+→ Submitted to Provider → {Provider Approved | Provider Rejected} → Active ↔ Paused → Archived`.
+Active/Provider-Approved templates are usable in campaigns/nurture/manual/automation.

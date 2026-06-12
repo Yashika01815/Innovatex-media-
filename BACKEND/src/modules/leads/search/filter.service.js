@@ -6,37 +6,105 @@ import { AppError } from '../../../shared/helpers/lead.helpers.js';
 
 /**
  * Normalize and validate raw query params into a clean filter object.
- * Rejects unknown status/temperature values (they could only come from a
- * mistaken client, so failing loudly is friendlier than silently ignoring).
+ *
+ * Supported:
+ * ?search=
+ * ?status=
+ * ?temperature=
+ * ?lead_temperature=
+ * ?source=
+ * ?segment=
+ * ?assigned_user_id=
+ * ?includeArchived=true
  */
 export function normalizeFilters(query = {}) {
   const filters = {};
 
-  if (query.search) filters.search = String(query.search).trim();
+  /*
+  |--------------------------------------------------------------------------
+  | Search
+  |--------------------------------------------------------------------------
+  */
+
+  if (query.search) {
+    filters.search = String(query.search).trim();
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | Status
+  |--------------------------------------------------------------------------
+  */
 
   if (query.status) {
     if (!LEAD_STATUS_VALUES.includes(query.status)) {
-      throw AppError.badRequest(`Invalid status filter: ${query.status}`);
+      throw AppError.badRequest(
+        `Invalid status filter: ${query.status}`,
+      );
     }
+
     filters.status = query.status;
   }
 
-  if (query.temperature) {
-    if (!LEAD_TEMPERATURE_VALUES.includes(query.temperature)) {
+  /*
+  |--------------------------------------------------------------------------
+  | Temperature
+  |--------------------------------------------------------------------------
+  */
+
+  const temperature =
+    query.lead_temperature || query.temperature;
+
+  if (temperature) {
+    if (!LEAD_TEMPERATURE_VALUES.includes(temperature)) {
       throw AppError.badRequest(
-        `Invalid temperature filter: ${query.temperature}`,
+        `Invalid temperature filter: ${temperature}`,
       );
     }
-    filters.temperature = query.temperature;
+
+    filters.temperature = temperature;
   }
 
-  if (query.source) filters.source = String(query.source).trim();
-  if (query.segment) filters.segment = String(query.segment).trim();
+  /*
+  |--------------------------------------------------------------------------
+  | Source
+  |--------------------------------------------------------------------------
+  */
+
+  if (query.source) {
+    filters.source = String(query.source).trim();
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | Segment
+  |--------------------------------------------------------------------------
+  */
+
+  if (query.segment) {
+    filters.segment = String(query.segment).trim();
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | Assigned User
+  |--------------------------------------------------------------------------
+  */
+
   if (query.assigned_user_id) {
-    filters.assigned_user_id = String(query.assigned_user_id).trim();
+    filters.assigned_user_id = String(
+      query.assigned_user_id,
+    ).trim();
   }
 
-  filters.includeArchived = query.includeArchived === 'true';
+  /*
+  |--------------------------------------------------------------------------
+  | Archived
+  |--------------------------------------------------------------------------
+  */
+
+  filters.includeArchived =
+    query.includeArchived === 'true';
 
   return filters;
 }
