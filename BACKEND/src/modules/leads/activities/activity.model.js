@@ -3,6 +3,33 @@ import mongoose from 'mongoose';
 const { Schema } = mongoose;
 
 /** Activity / timeline event types. */
+// export const ACTIVITY_TYPE = Object.freeze({
+//   LEAD_CREATED: 'Lead Created',
+//   LEAD_UPDATED: 'Lead Updated',
+//   LEAD_ASSIGNED: 'Lead Assigned',
+//   LEAD_UNASSIGNED: 'Lead Unassigned',
+//   LEAD_QUALIFIED: 'Lead Qualified',
+//   NOTE_ADDED: 'Note Added',
+//   LEAD_ARCHIVED: 'Lead Archived',
+//   LEAD_CAPTURED: 'Lead Captured',
+// }); // previous code
+
+//Channged code
+// export const ACTIVITY_TYPE = Object.freeze({
+//   LEAD_CREATED: 'Lead Created',
+//   LEAD_UPDATED: 'Lead Updated',
+//   LEAD_ASSIGNED: 'Lead Assigned',
+//   LEAD_UNASSIGNED: 'Lead Unassigned',
+//   LEAD_QUALIFIED: 'Lead Qualified',
+//   NOTE_ADDED: 'Note Added',
+//   LEAD_ARCHIVED: 'Lead Archived',
+//   LEAD_CAPTURED: 'Lead Captured',
+
+//   WHATSAPP_MESSAGE_SENT: 'WhatsApp Message Sent',
+//   WHATSAPP_REPLY_RECEIVED: 'WhatsApp Reply Received',
+// });
+
+
 export const ACTIVITY_TYPE = Object.freeze({
   LEAD_CREATED: 'Lead Created',
   LEAD_UPDATED: 'Lead Updated',
@@ -12,6 +39,12 @@ export const ACTIVITY_TYPE = Object.freeze({
   NOTE_ADDED: 'Note Added',
   LEAD_ARCHIVED: 'Lead Archived',
   LEAD_CAPTURED: 'Lead Captured',
+
+  WHATSAPP_MESSAGE_SENT: 'WhatsApp Message Sent',
+  WHATSAPP_REPLY_RECEIVED: 'WhatsApp Reply Received',
+
+  WHATSAPP_ASSIGNED: 'WhatsApp Conversation Assigned',
+  WHATSAPP_STATUS_CHANGED: 'WhatsApp Status Changed',
 });
 
 const activitySchema = new Schema(

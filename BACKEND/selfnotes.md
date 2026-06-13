@@ -165,6 +165,7 @@ adapter layer): Native Meta Cloud API, WATI, Interakt, AiSensy, Gallabox, Twilio
 Custom Webhook, Simulation Mode.
 
 **13 tabs:**
+
 1. **Inbox** ✅ — conversation list (search/filter),
    thread (bubbles, status, simulate inbound, assign, tags, internal notes),
    lead context panel (score, source/UTM, pipeline stage, payment status, response timer).
