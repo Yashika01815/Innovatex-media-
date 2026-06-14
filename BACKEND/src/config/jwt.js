@@ -1,0 +1,128 @@
+/**
+ * =============================================================================
+ * InnovateX Revenue OS — JWT Configuration & Utilities
+ * =============================================================================
+ *
+ * FILE: src/config/jwt.js
+ *
+ * PURPOSE
+ * ───────
+ * Pure JWT utility functions: sign, verify, decode.
+ * No database access — all DB operations are in token.service.js.
+ *
+ * HOW IT FITS
+ * ───────────
+ * jwt.js → token.service.js (calls signAccessToken, signRefreshToken)
+ *        → auth.middleware.js (calls verifyAccessToken)
+ *        → auth.service.js (calls signAccessToken after refresh)
+ *
+ * TOKEN PAYLOAD SHAPE
+ * ───────────────────
+ * Access Token:
+ *   { sub: userId, tenantId, role, sessionId, type: 'access' }
+ *
+ * Refresh Token:
+ *   { sub: userId, sessionId, type: 'refresh' }
+ *   (minimal payload — full user data re-fetched from DB on refresh)
+ *
+ * ENVIRONMENT VARIABLES REQUIRED
+ * ───────────────────────────────
+ * JWT_ACCESS_SECRET   — min 32 chars
+ * JWT_REFRESH_SECRET  — min 32 chars (MUST differ from access secret)
+ *
+ * PACKAGES REQUIRED
+ * ─────────────────
+ * jsonwebtoken — npm install jsonwebtoken
+ * =============================================================================
+ */
+
+import jwt from 'jsonwebtoken';
+import { TOKEN_EXPIRY, TOKEN_TYPES } from '../modules/auth/constants/auth.constants.js';
+
+// ─── Config ───────────────────────────────────────────────────────────────────
+
+const ACCESS_SECRET  = () => process.env.JWT_ACCESS_SECRET;
+const REFRESH_SECRET = () => process.env.JWT_REFRESH_SECRET;
+
+// ─── Sign Functions ───────────────────────────────────────────────────────────
+
+/**
+ * signAccessToken — creates a short-lived access token.
+ * @param {Object} payload — { userId, tenantId, role, sessionId }
+ * @returns {string} signed JWT
+ */
+export const signAccessToken = ({ userId, tenantId, role, sessionId }) => {
+  return jwt.sign(
+    {
+      sub:       userId,
+      tenantId:  tenantId ?? null,
+      role,
+      sessionId,
+      type:      TOKEN_TYPES.ACCESS,
+    },
+    ACCESS_SECRET(),
+    { expiresIn: TOKEN_EXPIRY.ACCESS_TOKEN_JWT }
+  );
+};
+
+/**
+ * signRefreshToken — creates a long-lived refresh token.
+ * Payload is minimal — full user context re-fetched from DB on use.
+ * @param {Object} payload — { userId, sessionId }
+ * @returns {string} signed JWT
+ */
+export const signRefreshToken = ({ userId, sessionId }) => {
+  return jwt.sign(
+    {
+      sub:       userId,
+      sessionId,
+      type:      TOKEN_TYPES.REFRESH,
+    },
+    REFRESH_SECRET(),
+    { expiresIn: TOKEN_EXPIRY.REFRESH_TOKEN_JWT }
+  );
+};
+
+// ─── Verify Functions ─────────────────────────────────────────────────────────
+
+/**
+ * verifyAccessToken — verifies and decodes an access token.
+ * @param {string} token
+ * @returns {Object} decoded payload
+ * @throws {JsonWebTokenError} if invalid or expired
+ */
+export const verifyAccessToken = (token) =>
+  jwt.verify(token, ACCESS_SECRET());
+
+/**
+ * verifyRefreshToken — verifies and decodes a refresh token.
+ * @param {string} token
+ * @returns {Object} decoded payload
+ * @throws {JsonWebTokenError} if invalid or expired
+ */
+export const verifyRefreshToken = (token) =>
+  jwt.verify(token, REFRESH_SECRET());
+
+// ─── Decode (no verification) ─────────────────────────────────────────────────
+
+/**
+ * decodeToken — decodes a JWT without verifying the signature.
+ * Use ONLY for non-security purposes (e.g. logging, debugging).
+ * NEVER use this for authentication.
+ * @param {string} token
+ * @returns {Object|null} decoded payload or null
+ */
+export const decodeToken = (token) => jwt.decode(token);
+
+// ─── Extract from Header ──────────────────────────────────────────────────────
+
+/**
+ * extractBearerToken — extracts token from "Authorization: Bearer <token>" header.
+ * @param {Object} req — Express request
+ * @returns {string|null}
+ */
+export const extractBearerToken = (req) => {
+  const authHeader = req.headers?.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
+  return authHeader.split(' ')[1] ?? null;
+};

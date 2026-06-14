@@ -1,15 +1,64 @@
-import app from './app.js';
-import config from '../src/config/config.js';
+/**
+ * =============================================================================
+ * InnovateX Revenue OS — Server Entry Point
+ * =============================================================================
+ *
+ * FILE: src/server.js
+ *
+ * Validates environment variables, connects to MongoDB, starts HTTP server.
+ * Handles graceful shutdown on SIGTERM/SIGINT.
+ * =============================================================================
+ */
+
+// ── Load & validate env vars FIRST (before any other imports)
+import '../src/config/env.js';
+
+import app       from './app.js';
+import config    from '../src/config/config.js';
 import connectDB from '../src/config/db.js';
+
+const PORT = config.PORT || 4000;
 
 const startServer = async () => {
   try {
+    // Connect to MongoDB
     await connectDB();
 
-    const PORT = config.PORT || 4001;
+    const server = app.listen(PORT, () => {
+      console.log(`\n🚀 InnovateX Revenue OS API`);
+      console.log(`   Environment : ${process.env.NODE_ENV || 'development'}`);
+      console.log(`   Port        : ${PORT}`);
+      console.log(`   Auth routes : http://localhost:${PORT}/api/auth\n`);
+    });
 
-    app.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
+    // ─── Graceful Shutdown ────────────────────────────────────────────────────
+
+    const shutdown = async (signal) => {
+      console.log(`\n⏸  Received ${signal}. Shutting down gracefully...`);
+      server.close(() => {
+        console.log('✅ HTTP server closed.');
+        process.exit(0);
+      });
+
+      // Force exit after 10 seconds if graceful shutdown hangs
+      setTimeout(() => {
+        console.error('❌ Graceful shutdown timed out. Forcing exit.');
+        process.exit(1);
+      }, 10_000);
+    };
+
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT',  () => shutdown('SIGINT'));
+
+    // ─── Unhandled Rejections ─────────────────────────────────────────────────
+    process.on('unhandledRejection', (reason, promise) => {
+      console.error('❌ Unhandled Promise Rejection:', reason);
+      server.close(() => process.exit(1));
+    });
+
+    process.on('uncaughtException', (error) => {
+      console.error('❌ Uncaught Exception:', error);
+      process.exit(1);
     });
 
   } catch (error) {
