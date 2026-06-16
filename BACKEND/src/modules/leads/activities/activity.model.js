@@ -45,6 +45,14 @@ export const ACTIVITY_TYPE = Object.freeze({
 
   WHATSAPP_ASSIGNED: 'WhatsApp Conversation Assigned',
   WHATSAPP_STATUS_CHANGED: 'WhatsApp Status Changed',
+  BOOKING_CREATED:     'Booking Created',
+  BOOKING_RESCHEDULED: 'Booking Rescheduled',
+  BOOKING_COMPLETED:   'Booking Completed',
+  BOOKING_CANCELLED:   'Booking Cancelled',
+  BOOKING_NO_SHOW:     'Booking No Show',
+
+  // ADD THIS — needed by call intelligence (next module)
+  CALL_COMPLETED:      'Call Completed',
 });
 
 const activitySchema = new Schema(

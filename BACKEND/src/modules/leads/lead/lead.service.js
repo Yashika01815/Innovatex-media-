@@ -1,23 +1,28 @@
-import { leadRepository } from './lead.repository.js';
-import { duplicateService } from '../duplicate-detection/duplicate.service.js';
-import { scoringService } from '../../leads/scoring/scoring.service.js'
-import { activityService } from '../activities/activity.service.js';
-import { ACTIVITY_TYPE } from '../activities/activity.model.js';
-import { noteService } from '../notes/note.service.js';
+import { leadRepository }        from './lead.repository.js';
+import { duplicateService }      from '../duplicate-detection/duplicate.service.js';
+import { scoringService }        from '../scoring/scoring.service.js';
+import { activityService }       from '../activities/activity.service.js';
+import { ACTIVITY_TYPE }         from '../activities/activity.model.js';
+import { noteService }           from '../notes/note.service.js';
 import { recommendationService } from '../ai/recommendation.service.js';
-import { buildSearch } from '../../leads/search/search.service.js';
-import { leadEvents } from '../../../shared/events/lead.events.js';
+import { buildSearch }           from '../search/search.service.js';
+import { leadEvents }            from '../../../shared/events/lead.events.js';
 import { toLeadDTO, toLeadListDTOs } from '../../../shared/mappers/lead.mappers.js';
 import { AppError, paginationMeta } from '../../../shared/helpers/lead.helpers.js';
-import { LEAD_STATUS } from './lead.constants.js';
+import { LEAD_STATUS }           from './lead.constants.js';
+
+// Booking integration — countBookingsByLead only, no circular dependency.
+// booking.service.js imports Lead directly (leadModel), NOT leadService.
+import { countBookingsByLead }   from '../../bookings/booking.service.js';
 
 /**
  * Lead Service — business logic + cross-module orchestration.
  * Controllers call this; this calls repositories and sibling services.
- * `ctx` = { tenantId, userId, role }.
+ * `ctx` = { tenantId, userId, role }
  */
 export const leadService = {
-  // ---- CRUD --------------------------------------------------------------
+
+  // ─── CREATE ────────────────────────────────────────────────────────────────
 
   async createLead(ctx, data, { skipDuplicateCheck = false } = {}) {
     if (!skipDuplicateCheck) {
@@ -27,13 +32,12 @@ export const leadService = {
       });
     }
 
-    // Auto-score on creation.
     const { score, temperature } = scoringService.scoreLead(data);
     const payload = {
       ...data,
-      tenant_id: ctx.tenantId,
+      tenant_id:           ctx.tenantId,
       qualification_score: data.qualification_score ?? score,
-      lead_temperature: data.lead_temperature ?? temperature,
+      lead_temperature:    data.lead_temperature ?? temperature,
     };
 
     const lead = await leadRepository.create(payload);
@@ -44,19 +48,23 @@ export const leadService = {
 
     leadEvents.created({
       tenantId: ctx.tenantId,
-      leadId: String(lead._id),
-      lead: toLeadDTO(lead),
-      actor: ctx.userId,
+      leadId:   String(lead._id),
+      lead:     toLeadDTO(lead),
+      actor:    ctx.userId,
     });
 
     return lead;
   },
+
+  // ─── READ SINGLE ───────────────────────────────────────────────────────────
 
   async getLead(ctx, id) {
     const lead = await leadRepository.findById(ctx.tenantId, id);
     if (!lead) throw AppError.notFound('Lead not found');
     return lead;
   },
+
+  // ─── READ LIST ─────────────────────────────────────────────────────────────
 
   async getLeads(ctx, query) {
     const { filter, sort, page, limit, skip } = buildSearch(query);
@@ -67,16 +75,17 @@ export const leadService = {
     ]);
 
     return {
-      data: toLeadListDTOs(items),
+      data:       toLeadListDTOs(items),
       pagination: paginationMeta({ page, limit, total }),
     };
   },
+
+  // ─── UPDATE ────────────────────────────────────────────────────────────────
 
   async updateLead(ctx, id, patch) {
     const existing = await leadRepository.findById(ctx.tenantId, id);
     if (!existing) throw AppError.notFound('Lead not found');
 
-    // Re-score if a scoring-relevant field changed.
     const merged = { ...existing.toObject(), ...patch };
     if (patch.qualification_score === undefined) {
       const { score, temperature } = scoringService.scoreLead(merged);
@@ -89,18 +98,17 @@ export const leadService = {
     const updated = await leadRepository.updateById(ctx.tenantId, id, patch);
 
     const fields = Object.keys(patch);
-
-    let activityType = ACTIVITY_TYPE.LEAD_UPDATED;
+    let activityType    = ACTIVITY_TYPE.LEAD_UPDATED;
     let activityMessage = 'Lead updated';
 
     if (fields.includes('status')) {
-      activityType = 'Lead Status Updated';
+      activityType    = 'Lead Status Updated';
       activityMessage = `Lead status changed to ${patch.status}`;
     }
 
     await activityService.log(ctx, id, activityType, {
       message: activityMessage,
-      meta: { fields },
+      meta:    { fields },
     });
 
     if (
@@ -109,7 +117,7 @@ export const leadService = {
     ) {
       await activityService.log(ctx, id, ACTIVITY_TYPE.LEAD_ASSIGNED, {
         message: `Lead assigned to ${patch.assigned_user_id || 'unassigned'}`,
-        meta: { from: existing.assigned_user_id, to: patch.assigned_user_id },
+        meta:    { from: existing.assigned_user_id, to: patch.assigned_user_id },
       });
     }
 
@@ -124,14 +132,16 @@ export const leadService = {
 
     leadEvents.updated({
       tenantId: ctx.tenantId,
-      leadId: id,
-      lead: toLeadDTO(updated),
-      actor: ctx.userId,
-      changed: Object.keys(patch),
+      leadId:   id,
+      lead:     toLeadDTO(updated),
+      actor:    ctx.userId,
+      changed:  Object.keys(patch),
     });
 
     return updated;
   },
+
+  // ─── ARCHIVE ───────────────────────────────────────────────────────────────
 
   async archiveLead(ctx, id) {
     const existing = await leadRepository.findById(ctx.tenantId, id);
@@ -145,37 +155,46 @@ export const leadService = {
 
     leadEvents.archived({
       tenantId: ctx.tenantId,
-      leadId: id,
-      lead: toLeadDTO(archived),
-      actor: ctx.userId,
+      leadId:   id,
+      lead:     toLeadDTO(archived),
+      actor:    ctx.userId,
     });
 
     return archived;
   },
 
-  // ---- Detail drawer -----------------------------------------------------
+  // ─── DETAIL DRAWER ─────────────────────────────────────────────────────────
 
+  /**
+   * getLeadDetails — all data for the lead detail drawer.
+   * SOURCE: FRONTEND_SPEC §4 lead drawer "linked record counts (deals/bookings/calls/payments)"
+   *
+   * bookings count is now REAL via countBookingsByLead().
+   * deals/calls/payments remain stubbed until those modules are integrated.
+   */
   async getLeadDetails(ctx, id) {
     const lead = await this.getLead(ctx, id);
-    const [notes, timeline, noteCount, activityCount] = await Promise.all([
-      noteService.getNotes(ctx, id),
-      activityService.getTimeline(ctx, id),
-      noteService.count(ctx, id),
-      activityService.count(ctx, id),
-    ]);
+
+    const [notes, timeline, noteCount, activityCount, bookingCount] =
+      await Promise.all([
+        noteService.getNotes(ctx, id),
+        activityService.getTimeline(ctx, id),
+        noteService.count(ctx, id),
+        activityService.count(ctx, id),
+        countBookingsByLead(ctx.tenantId, String(lead._id)),
+      ]);
 
     return {
-      lead: toLeadDTO(lead),
+      lead:           toLeadDTO(lead),
       notes,
       timeline,
       recommendation: recommendationService.forLead(lead.toObject()),
-      // Linked counts — stubbed until those modules exist.
       counts: {
-        deals: 0,
-        bookings: 0,
-        calls: 0,
-        payments: 0,
-        notes: noteCount,
+        deals:      0,
+        bookings:   bookingCount,
+        calls:      0,
+        payments:   0,
+        notes:      noteCount,
         activities: activityCount,
       },
     };

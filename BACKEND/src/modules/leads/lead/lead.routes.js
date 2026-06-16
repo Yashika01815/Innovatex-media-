@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { upload } from '../../../shared/middlewares/upload.middleware.js';
+import { authenticate } from '../../../shared/middlewares/auth.middleware.js';
 
 import { leadController } from './lead.controller.js';
 import { validateCreateLead, validateUpdateLead } from './lead.validator.js';
@@ -20,6 +21,7 @@ import { importController } from '../imports/import.controller.js';
  * captured by the param route.
  */
 const router = Router();
+router.use(authenticate);
 
 router.use(withContext);
 

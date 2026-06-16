@@ -22,6 +22,15 @@ const dealSchema = new Schema(
       required: true,
       index: true,
     },
+    // Add inside dealSchema
+    stageHistory: {
+     type: [{
+    stage:   { type: String },
+    movedAt: { type: Date },
+    movedBy: { type: String, default: null },
+     }],
+    default: [],
+    },
 
     title: { type: String, required: true, trim: true },
     description: { type: String, trim: true, default: '' },

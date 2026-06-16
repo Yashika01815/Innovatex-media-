@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { authenticate } from '../../../shared/middlewares/auth.middleware.js';
 import { dealController } from './deal.controller.js';
 import {
   validateCreateDeal,
@@ -14,7 +15,7 @@ import { authorize, DEAL_ACTIONS } from '../../../shared/permissions/pipeline.pe
  * "/:id/stage" is declared before "/:id" so it is not shadowed.
  */
 const router = Router();
-
+router.use(authenticate);
 router.use(withContext);
 
 router
