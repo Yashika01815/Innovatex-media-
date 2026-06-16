@@ -230,3 +230,62 @@ Active/Provider-Approved templates are usable in campaigns/nurture/manual/automa
 **Drag-and-drop** (+ arrow fallback). Deal value, probability, owner, source.
 
 - ✅ Add/delete deal, owner filter, per-stage totals, win-rate KPI. Each move → lead status + tracking event.
+
+
+
+Auth
+↓
+Tenant
+↓
+User
+↓
+Lead
+↓
+Booking
+↓
+Pipeline
+
+
+
+
+
+
+Inbox ✅
+↓
+Contacts ✅
+↓
+Templates 
+↓
+Template Approval
+↓
+Campaigns
+↓
+Broadcasts
+↓
+Nurture
+↓
+Automations
+↓
+Analytics
+
+
+
+Inbox                       ✅
+Contacts                    ✅
+
+Templates                   ⏭️
+Template Approval           ⏭️
+
+Campaigns                   ⏭️
+Broadcasts                  ⏭️
+Nurture                     ⏭️
+
+AI Reply Assistant          ⏭️
+Automation Rules            ⏭️
+
+Analytics                   ⏭️
+Settings                    ⏭️
+
+Meta Cloud API              ⏭️
+Webhooks                    ⏭️
+Socket.IO                   ⏭️

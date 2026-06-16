@@ -279,7 +279,9 @@ userSchema.statics.findActiveByTenant = function (tenantId) {
 // INDEXES
 // =============================================================================
 
-userSchema.index({ email: 1 },             { unique: true });
+// email already has unique: true in the schema field definition
+// so do NOT create a duplicate schema index here.
+
 userSchema.index({ role: 1 });
 userSchema.index({ tenantId: 1, role: 1 });
 userSchema.index({ tenantId: 1, status: 1 });

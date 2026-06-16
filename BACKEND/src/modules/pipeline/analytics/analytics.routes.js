@@ -3,7 +3,7 @@ import { analyticsController } from './analytics.controller.js';
 import { dealController } from '../deals/deal.controller.js';
 import { withContext } from '../../../shared/helpers/lead.helpers.js';
 import { authorize, DEAL_ACTIONS } from '../../../shared/permissions/pipeline.permissions.js';
-
+import { authenticate } from '../../../shared/middlewares/auth.middleware.js';
 /**
  * Pipeline-level routes. Mount at: app.use('/api/pipeline', pipelineRoutes)
  *
@@ -14,7 +14,7 @@ import { authorize, DEAL_ACTIONS } from '../../../shared/permissions/pipeline.pe
  * router exposes it under the pipeline namespace.
  */
 const router = Router();
-
+router.use(authenticate);
 router.use(withContext);
 
 router.get('/stats', authorize(DEAL_ACTIONS.READ), analyticsController.getStats);

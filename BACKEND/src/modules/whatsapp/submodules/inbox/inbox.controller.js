@@ -1,4 +1,4 @@
-import { asyncHandler } from '../../../shared/helpers/lead.helpers.js';
+import { asyncHandler } from '../../../../shared/helpers/lead.helpers.js';
 import { inboxService } from './inbox.service.js';
 
 export const inboxController = {

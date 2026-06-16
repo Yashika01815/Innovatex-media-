@@ -1,9 +1,9 @@
-import { normalizePaging, paginationMeta } from '../../../shared/helpers/lead.helpers.js';
-import { conversationRepository } from '../conversations/conversation.repository.js';
+import { normalizePaging, paginationMeta } from '../../../../shared/helpers/lead.helpers.js';
+import { conversationRepository } from '../../conversations/conversation.repository.js';
 import {
   buildConversationFilter,
   conversationService,
-} from '../conversations/conversation.service.js';
+} from '../../conversations/conversation.service.js';
 
 /**
  * Inbox = the conversation list view with search + filters.

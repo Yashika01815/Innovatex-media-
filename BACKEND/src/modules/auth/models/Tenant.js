@@ -465,12 +465,14 @@ tenantSchema.statics.findBySlug = function (slug) {
 // INDEXES
 // =============================================================================
 
-tenantSchema.index({ slug: 1 },                          { unique: true });
+// slug already has unique: true in the schema definition.
+// Do not create a duplicate index.
+
 tenantSchema.index({ ownerEmail: 1 });
 tenantSchema.index({ plan: 1, subscriptionStatus: 1 });
 tenantSchema.index({ workspaceStatus: 1, isActive: 1 });
 tenantSchema.index({ subscriptionStatus: 1, trialEndsAt: 1 });
-tenantSchema.index({ deletedAt: 1 },                     { sparse: true });
+tenantSchema.index({ deletedAt: 1 }, { sparse: true });
 
 // =============================================================================
 // EXPORT
