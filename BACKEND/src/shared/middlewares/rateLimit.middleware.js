@@ -42,7 +42,7 @@ export const loginRateLimit = rateLimit({
   legacyHeaders:    false,
   handler:          rateLimitHandler,
   skipSuccessfulRequests: false,
-  keyGenerator:     (req) => req.ip, // Rate limit per IP
+  // keyGenerator:     (req) => req.ip, // Rate limit per IP
 });
 
 /**
