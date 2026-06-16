@@ -1,0 +1,35 @@
+import { Router } from 'express';
+import * as controller from './booking.controller.js';
+import {
+  validateCreateBooking,
+  validateUpdateStatus,
+  validateReschedule,
+  validateListQuery,
+} from './booking.validator.js';
+
+import { authenticate }  from '../../shared/middlewares/auth.middleware.js';
+import { resolveTenant } from '../../shared/middlewares/tenant.middleware.js';
+import { requireRole }   from '../../shared/middlewares/role.middleware.js';
+
+const router = Router();
+
+// Apply auth + tenant resolution to ALL booking routes
+router.use(authenticate);
+router.use(resolveTenant);
+
+// ── Static routes BEFORE /:id — prevents Express treating "kpis"/"lead" as :id
+router.get('/kpis',           controller.getKpis);
+router.get('/lead/:leadId',   controller.getBookingsByLead);
+
+// ── Collection routes
+router
+  .route('/')
+  .get(validateListQuery,                              controller.getBookings)
+  .post(requireRole('sales_user'), validateCreateBooking, controller.createBooking);
+
+// ── Resource routes
+router.get('/:id',                                                 controller.getBooking);
+router.patch('/:id/status',  requireRole('sales_user'), validateUpdateStatus, controller.updateStatus);
+router.post('/:id/reschedule', requireRole('sales_user'), validateReschedule,  controller.reschedule);
+
+export default router;
