@@ -24,6 +24,16 @@ export const ACTIVITY_TYPE = Object.freeze({
   WHATSAPP_CONTACT_CONSENT_UPDATED: 'WhatsApp Contact Consent Updated',
   WHATSAPP_CONTACT_TAG_ADDED: 'WhatsApp Contact Tag Added',
   WHATSAPP_CONTACT_TAG_REMOVED: 'WhatsApp Contact Tag Removed',
+  // WhatsApp Templates module
+  WHATSAPP_TEMPLATE_CREATED: 'WhatsApp Template Created',
+  WHATSAPP_TEMPLATE_UPDATED: 'WhatsApp Template Updated',
+  WHATSAPP_TEMPLATE_DUPLICATED: 'WhatsApp Template Duplicated',
+  WHATSAPP_TEMPLATE_ACTIVATED: 'WhatsApp Template Activated',
+  WHATSAPP_TEMPLATE_PAUSED: 'WhatsApp Template Paused',
+  WHATSAPP_TEMPLATE_ARCHIVED: 'WhatsApp Template Archived',
+  WHATSAPP_TEMPLATE_APPROVED: 'WhatsApp Template Approved',
+  WHATSAPP_TEMPLATE_REJECTED: 'WhatsApp Template Rejected',
+  WHATSAPP_TEMPLATE_SYNCED: 'WhatsApp Template Synced',
 });
 
 const activitySchema = new Schema(
@@ -32,9 +42,13 @@ const activitySchema = new Schema(
     lead_id: {
       type: Schema.Types.ObjectId,
       ref: 'Lead',
-      required: true,
+      default: null,
       index: true,
     },
+    // Optional generic entity link, for activities not tied to a lead
+    // (e.g. WhatsApp templates). entity_type is a label; entity_id is a string id.
+    entity_type: { type: String, default: null },
+    entity_id: { type: String, default: null },
     type: { type: String, required: true },
     message: { type: String, default: '' },
     actor: { type: String, default: null },
@@ -45,5 +59,7 @@ const activitySchema = new Schema(
     versionKey: false,
   },
 );
+
+activitySchema.index({ tenant_id: 1, entity_type: 1, entity_id: 1 });
 
 export const LeadActivity = mongoose.model('LeadActivity', activitySchema);

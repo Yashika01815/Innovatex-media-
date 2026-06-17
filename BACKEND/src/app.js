@@ -21,6 +21,7 @@ import pipelineRouter from './modules/pipeline/pipeline.routes.js';
 import whatsappRouter from './modules/whatsapp/whatsapp.routes.js';
 import bookingRoutes from './modules/bookings/booking.routes.js';
 import contactsRoutes from './modules/whatsapp/submodules/contacts/contacts.routes.js';
+import templatesRoutes from './modules/whatsapp/submodules/templates/templates.routes.js';
 
 
 // ── Middleware Imports ────────────────────────────────────────────────────────
@@ -109,6 +110,8 @@ app.use('/api/pipeline',  pipelineRouter);
 app.use('/api/whatsapp',  whatsappRouter);
 app.use('/api/bookings',  bookingRoutes);
 app.use('/api/whatsapp/contacts', contactsRoutes);
+app.use('/api/whatsapp/templates', templatesRoutes);
+
 /*
 |--------------------------------------------------------------------------
 | 404 Handler — MUST come after all routes

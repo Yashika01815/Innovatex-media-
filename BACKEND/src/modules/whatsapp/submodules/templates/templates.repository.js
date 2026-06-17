@@ -1,0 +1,109 @@
+import { WhatsAppTemplate } from './templates.model.js';
+import { TEMPLATE_STATUS } from './templates.constants.js';
+
+/**
+ * Template repository — the only layer that touches the WhatsAppTemplate
+ * collection. Every query is tenant-scoped.
+ */
+export const templatesRepository = {
+  createTemplate(data) {
+    return WhatsAppTemplate.create(data);
+  },
+
+  findById(tenantId, id) {
+    return WhatsAppTemplate.findOne({ _id: id, tenantId });
+  },
+
+  findBySlug(tenantId, slug) {
+    return WhatsAppTemplate.findOne({ tenantId, slug });
+  },
+
+  listTemplates(tenantId, filter = {}, { sort = { createdAt: -1 }, skip = 0, limit = 20 } = {}) {
+    return WhatsAppTemplate.find({ tenantId, ...filter })
+      .sort(sort)
+      .skip(skip)
+      .limit(limit);
+  },
+
+  countTemplates(tenantId, filter = {}) {
+    return WhatsAppTemplate.countDocuments({ tenantId, ...filter });
+  },
+
+  updateTemplate(tenantId, id, patch) {
+    return WhatsAppTemplate.findOneAndUpdate(
+      { _id: id, tenantId },
+      { $set: patch },
+      { new: true, runValidators: true },
+    );
+  },
+
+  deleteTemplate(tenantId, id) {
+    return WhatsAppTemplate.findOneAndDelete({ _id: id, tenantId });
+  },
+
+  duplicateTemplate(data) {
+    return WhatsAppTemplate.create(data);
+  },
+
+  activateTemplate(tenantId, id) {
+    return WhatsAppTemplate.findOneAndUpdate(
+      { _id: id, tenantId },
+      { $set: { status: TEMPLATE_STATUS.ACTIVE, isActive: true } },
+      { new: true },
+    );
+  },
+
+  pauseTemplate(tenantId, id) {
+    return WhatsAppTemplate.findOneAndUpdate(
+      { _id: id, tenantId },
+      { $set: { status: TEMPLATE_STATUS.PAUSED, isActive: false } },
+      { new: true },
+    );
+  },
+
+  archiveTemplate(tenantId, id) {
+    return WhatsAppTemplate.findOneAndUpdate(
+      { _id: id, tenantId },
+      { $set: { status: TEMPLATE_STATUS.ARCHIVED, isActive: false } },
+      { new: true },
+    );
+  },
+
+  updateProviderStatus(tenantId, id, providerStatus, extra = {}) {
+    const set = { 'providerMetadata.providerStatus': providerStatus };
+    if (extra.providerTemplateId !== undefined) set['providerMetadata.providerTemplateId'] = extra.providerTemplateId;
+    if (extra.providerError !== undefined) set['providerMetadata.providerError'] = extra.providerError;
+    return WhatsAppTemplate.findOneAndUpdate(
+      { _id: id, tenantId },
+      { $set: set },
+      { new: true },
+    );
+  },
+
+  updateSyncStatus(tenantId, id, providerMetadata) {
+    const now = new Date();
+    return WhatsAppTemplate.findOneAndUpdate(
+      { _id: id, tenantId },
+      { $set: { providerMetadata, lastSyncedAt: now } },
+      { new: true },
+    );
+  },
+
+  incrementUsageCount(tenantId, id) {
+    return WhatsAppTemplate.findOneAndUpdate(
+      { _id: id, tenantId },
+      { $inc: { usageCount: 1 }, $set: { lastUsedAt: new Date() } },
+      { new: true },
+    );
+  },
+
+  updateApprovalStatus(tenantId, id, approvalStatus, { set = {}, historyEntry } = {}) {
+    const update = { $set: { approvalStatus, ...set } };
+    if (historyEntry) update.$push = { approvalHistory: historyEntry };
+    return WhatsAppTemplate.findOneAndUpdate(
+      { _id: id, tenantId },
+      update,
+      { new: true },
+    );
+  },
+};
