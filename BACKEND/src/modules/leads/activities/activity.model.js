@@ -8,6 +8,7 @@ export const ACTIVITY_TYPE = Object.freeze({
   LEAD_UPDATED: 'Lead Updated',
   LEAD_ASSIGNED: 'Lead Assigned',
   LEAD_QUALIFIED: 'Lead Qualified',
+  AI_QUALIFIED:  'AI Qualified',
   NOTE_ADDED: 'Note Added',
   LEAD_ARCHIVED: 'Lead Archived',
   LEAD_CAPTURED: 'Lead Captured',

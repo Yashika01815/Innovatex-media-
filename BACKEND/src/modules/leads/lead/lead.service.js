@@ -13,7 +13,8 @@ import { LEAD_STATUS }           from './lead.constants.js';
 
 // Booking integration — countBookingsByLead only, no circular dependency.
 // booking.service.js imports Lead directly (leadModel), NOT leadService.
-import { countBookingsByLead }   from '../../bookings/booking.service.js';
+import { countBookingsByLead }        from '../../bookings/booking.service.js';
+import { countQualificationsByLead } from '../../qualification/qualification.service.js';
 
 /**
  * Lead Service — business logic + cross-module orchestration.
@@ -175,13 +176,14 @@ export const leadService = {
   async getLeadDetails(ctx, id) {
     const lead = await this.getLead(ctx, id);
 
-    const [notes, timeline, noteCount, activityCount, bookingCount] =
+    const [notes, timeline, noteCount, activityCount, bookingCount, qualificationCount] =
       await Promise.all([
         noteService.getNotes(ctx, id),
         activityService.getTimeline(ctx, id),
         noteService.count(ctx, id),
         activityService.count(ctx, id),
         countBookingsByLead(ctx.tenantId, String(lead._id)),
+        countQualificationsByLead(ctx.tenantId, String(lead._id)),
       ]);
 
     return {
@@ -191,8 +193,9 @@ export const leadService = {
       recommendation: recommendationService.forLead(lead.toObject()),
       counts: {
         deals:      0,
-        bookings:   bookingCount,
-        calls:      0,
+        bookings:       bookingCount,
+        qualifications: qualificationCount,
+        calls:          0,
         payments:   0,
         notes:      noteCount,
         activities: activityCount,
