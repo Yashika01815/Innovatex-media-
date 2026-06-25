@@ -35,6 +35,38 @@ export const ACTIVITY_TYPE = Object.freeze({
   WHATSAPP_TEMPLATE_APPROVED: 'WhatsApp Template Approved',
   WHATSAPP_TEMPLATE_REJECTED: 'WhatsApp Template Rejected',
   WHATSAPP_TEMPLATE_SYNCED: 'WhatsApp Template Synced',
+  // WhatsApp Template Approval module
+  WHATSAPP_TEMPLATE_SUBMITTED: 'WhatsApp Template Submitted',
+  WHATSAPP_TEMPLATE_RESUBMITTED: 'WhatsApp Template Resubmitted',
+  WHATSAPP_TEMPLATE_CHANGES_REQUESTED: 'WhatsApp Template Changes Requested',
+  WHATSAPP_TEMPLATE_INTERNALLY_APPROVED: 'WhatsApp Template Internally Approved',
+  WHATSAPP_TEMPLATE_SUBMITTED_TO_PROVIDER: 'WhatsApp Template Submitted to Provider',
+  WHATSAPP_TEMPLATE_PROVIDER_APPROVED: 'WhatsApp Template Provider Approved',
+  WHATSAPP_TEMPLATE_PROVIDER_REJECTED: 'WhatsApp Template Provider Rejected',
+  WHATSAPP_TEMPLATE_DISABLED: 'WhatsApp Template Disabled',
+  // WhatsApp Campaigns module
+  WHATSAPP_CAMPAIGN_CREATED:   'WhatsApp Campaign Created',
+  WHATSAPP_CAMPAIGN_UPDATED:   'WhatsApp Campaign Updated',
+  WHATSAPP_CAMPAIGN_APPROVED:  'WhatsApp Campaign Approved',
+  WHATSAPP_CAMPAIGN_SCHEDULED: 'WhatsApp Campaign Scheduled',
+  WHATSAPP_CAMPAIGN_STARTED:   'WhatsApp Campaign Started',
+  WHATSAPP_CAMPAIGN_COMPLETED: 'WhatsApp Campaign Completed',
+  WHATSAPP_CAMPAIGN_FAILED:    'WhatsApp Campaign Failed',
+  WHATSAPP_CAMPAIGN_CANCELLED: 'WhatsApp Campaign Cancelled',
+  WHATSAPP_CAMPAIGN_DELETED:   'WhatsApp Campaign Deleted',
+  // WhatsApp Broadcasts module
+  WHATSAPP_BROADCAST_CREATED:   'WhatsApp Broadcast Created',
+  WHATSAPP_BROADCAST_UPDATED:   'WhatsApp Broadcast Updated',
+  WHATSAPP_BROADCAST_APPROVED:  'WhatsApp Broadcast Approved',
+  WHATSAPP_BROADCAST_SCHEDULED: 'WhatsApp Broadcast Scheduled',
+  WHATSAPP_BROADCAST_STARTED:   'WhatsApp Broadcast Started',
+  WHATSAPP_BROADCAST_COMPLETED: 'WhatsApp Broadcast Completed',
+  WHATSAPP_BROADCAST_FAILED:    'WhatsApp Broadcast Failed',
+  WHATSAPP_BROADCAST_CANCELLED: 'WhatsApp Broadcast Cancelled',
+  WHATSAPP_BROADCAST_DELETED:   'WhatsApp Broadcast Deleted',
+  // Exclusion events (shared by Broadcasts and future send modules)
+  WHATSAPP_CONTACT_EXCLUDED_OPT_OUT:    'WhatsApp Contact Excluded: Opted Out',
+  WHATSAPP_CONTACT_EXCLUDED_SUPPRESSED: 'WhatsApp Contact Excluded: No Consent',
 });
 
 const activitySchema = new Schema(

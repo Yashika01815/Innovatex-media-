@@ -208,93 +208,66 @@ async function _registerTenantOwner(
   { firstName, lastName, email, password, workspaceName },
   meta
 ) {
-  let session;
   let tenant;
   let user;
 
   try {
-    session = await mongoose.startSession();
-    session.startTransaction();
+    tenant = await Tenant.create({
+      name: workspaceName,
+      ownerName: `${firstName} ${lastName}`.trim(),
+      ownerEmail: email.toLowerCase().trim(),
+    });
 
-    // ── 1. Create Tenant ─────────────────────────────────────────────────────
-    const [createdTenant] = await Tenant.create(
-      [
-        {
-          name:               workspaceName,
-          // slug auto-generated from name by Tenant.js pre-validate Hook 1
-          ownerName:          `${firstName} ${lastName}`.trim(),
-          ownerEmail:         email.toLowerCase().trim(),
-          // plan/subscriptionStatus/trialEndsAt set by Tenant.js pre-save hooks
-        },
-      ],
-      { session }
-    );
-    tenant = createdTenant;
+    user = await userRepo.create({
+      firstName,
+      lastName,
+      email,
+      password,
+      role: ROLES.TENANT_OWNER,
+      tenantId: tenant._id,
+      status: USER_STATUS.ACTIVE,
+    });
 
-    // ── 2. Create User with tenantId ─────────────────────────────────────────
-    const [createdUser] = await userRepo.createWithSession(
-      {
-        firstName,
-        lastName,
-        email,
-        password,         // hashed by User.js pre-save Hook 2
-        role:     ROLES.TENANT_OWNER,
-        tenantId: tenant._id,
-        status:   USER_STATUS.ACTIVE,
-      },
-      session
-    );
-    user = createdUser;
-
-    // ── 3. Link tenant back to owner ─────────────────────────────────────────
-    tenant.ownerUserId    = user._id;
+    tenant.ownerUserId = user._id;
     tenant.currentUserCount = 1;
-    await tenant.save({ session });
 
-    await session.commitTransaction();
-
+    await tenant.save();
   } catch (error) {
-    if (session) await session.abortTransaction();
-
-    // Handle slug uniqueness collision (Tenant slug already exists)
     if (error.code === 11000 && error.keyPattern?.slug) {
       throw new AppError(
-        `A workspace with a similar name already exists. Please try a different workspace name.`,
+        'A workspace with a similar name already exists. Please try a different workspace name.',
         409
       );
     }
 
     throw error;
-  } finally {
-    if (session) await session.endSession();
   }
 
-  // ── Post-transaction: send email + issue tokens ───────────────────────────
-  // These run outside the transaction (no rollback risk — external services)
   await issueVerificationEmail(user);
 
-  const { accessToken, refreshToken } = await tokenSvc.issueTokenPair(user, meta);
+  const { accessToken, refreshToken } =
+    await tokenSvc.issueTokenPair(user, meta);
 
   await createAuditLog({
-    userId:   user._id,
+    userId: user._id,
     tenantId: tenant._id,
-    email:    user.email,
-    event:    AUDIT_EVENTS.LOGIN_SUCCESS,
-    success:  true,
+    email: user.email,
+    event: AUDIT_EVENTS.LOGIN_SUCCESS,
+    success: true,
     ...meta,
   });
 
   return {
-    user:         user.getPublicProfile(),
+    user: user.getPublicProfile(),
     accessToken,
     refreshToken,
     tenant: {
-      id:                 tenant._id,
-      name:               tenant.name,
-      slug:               tenant.slug,
-      plan:               tenant.plan,
+      id: tenant._id,
+      name: tenant.name,
+      slug: tenant.slug,
+      plan: tenant.plan,
       subscriptionStatus: tenant.subscriptionStatus,
-      trialEndsAt:        tenant.trialEndsAt,
+      trialEndsAt: tenant.trialEndsAt,
     },
   };
 }

@@ -24,6 +24,9 @@ import qualificationRoutes from './modules/qualification/qualification.routes.js
 import bookingRoutes from './modules/bookings/booking.routes.js';
 import contactsRoutes from './modules/whatsapp/submodules/contacts/contacts.routes.js';
 import templatesRoutes from './modules/whatsapp/submodules/templates/templates.routes.js';
+import { templateApprovalRoutes, templateApprovalWebhookRoutes } from './modules/whatsapp/submodules/templateApproval/templateApproval.routes.js';
+import campaignsRoutes from './modules/whatsapp/submodules/campaigns/campaigns.routes.js';
+import broadcastsRoutes  from './modules/whatsapp/submodules/broadcasts/broadcasts.routes.js';
 
 
 // ── Middleware Imports ────────────────────────────────────────────────────────
@@ -115,6 +118,14 @@ app.use('/api/qualification', qualificationRoutes);
 app.use('/api/bookings',       bookingRoutes);
 app.use('/api/whatsapp/contacts', contactsRoutes);
 app.use('/api/whatsapp/templates', templatesRoutes);
+// Template approval actions share the /api/whatsapp/templates/:id namespace.
+// Declared AFTER templatesRoutes so static routes (/categories, /languages) win first.
+app.use('/api/whatsapp/templates', templateApprovalRoutes);
+// Provider webhooks: unauthenticated, verified by provider signature in production.
+app.use('/api/whatsapp/template-approval', templateApprovalWebhookRoutes);
+app.use('/appi/whatsapp/campaigns', campaignsRoutes);
+app.use('/api/whatsapp/broadcasts',  broadcastsRoutes);
+
 
 /*
 |--------------------------------------------------------------------------

@@ -175,7 +175,62 @@ Custom Webhook, Simulation Mode.
 
 3. **Templates** ✅ — create/edit/duplicate; status-aware actions.
 
+
 4. **Template Approval** ✅ — full state machine (11 statuses), status timeline, approval comments.
+
+          Approve
+          Request Changes
+          Reject
+
+    
+         Internally Approved
+                ↓
+         Submit To Provider  -> PROVIDER_APPROVED         
+                                      or
+                                PROVIDER_REJECTED 
+
+                                Spam
+                                Policy Violations
+                                Misleading Claims
+                                Variable Usage
+                                Formatting
+   WHO CAN CREATE TEMPALTE?
+     sales_user
+     sales_manager
+     marketing_user
+     marketing_manager
+     tenant_owner     
+  
+  who can submit FOR REVIEW?
+     sales_manager
+     marketing_manager
+     tenant_owner
+
+  WHO CAN INTERNALLY APOPROVE? AND REJECT?
+     sales_manager
+     marketing_manager
+     tenant_owner
+
+  WHO CAN SUBMIT TO THE PROVIDER?
+     tenant_owner
+     sales_manager
+     marketing_manager
+
+
+
+            DRAFT
+    ↓
+    SUBMITTED_FOR_INTERNAL_REVIEW
+    ↓
+    INTERNALLY_APPROVED
+    ↓
+    SUBMITTED_TO_PROVIDER
+    ↓
+    PROVIDER_APPROVED
+    ↓
+    ACTIVE
+
+
 
 5. **Campaigns** ✅ — audience filter + approved template + recipient count; approve/schedule/send
    (🟡 simulated metrics); metrics (sent/delivered/read/replied/failed/bookings/payments/revenue).
