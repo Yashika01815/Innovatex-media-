@@ -25,6 +25,12 @@ import attributionRoutes from './modules/attribution/attribution.routes.js';
 import bookingRoutes from './modules/bookings/booking.routes.js';
 import contactsRoutes from './modules/whatsapp/submodules/contacts/contacts.routes.js';
 import templatesRoutes from './modules/whatsapp/submodules/templates/templates.routes.js';
+import { templateApprovalRoutes, templateApprovalWebhookRoutes } from './modules/whatsapp/submodules/templateApproval/templateApproval.routes.js';
+import campaignsRoutes from './modules/whatsapp/submodules/campaigns/campaigns.routes.js';
+import broadcastsRoutes  from './modules/whatsapp/submodules/broadcasts/broadcasts.routes.js';
+import nurturesRoutes  from './modules/whatsapp/submodules/nurtures/nurtures.routes.js';
+import aiReplyAssistantRoutes from './modules/whatsapp/submodules/aiReplyAssistant/aiReplyAssistant.routes.js';
+import automationRulesRoutes   from './modules/whatsapp/submodules/automationRules/automationRules.routes.js';
 
 
 // ── Middleware Imports ────────────────────────────────────────────────────────
@@ -117,6 +123,16 @@ app.use('/api/attribution',  attributionRoutes);
 app.use('/api/bookings',       bookingRoutes);
 app.use('/api/whatsapp/contacts', contactsRoutes);
 app.use('/api/whatsapp/templates', templatesRoutes);
+// Template approval actions share the /api/whatsapp/templates/:id namespace.
+// Declared AFTER templatesRoutes so static routes (/categories, /languages) win first.
+app.use('/api/whatsapp/templates', templateApprovalRoutes);
+// Provider webhooks: unauthenticated, verified by provider signature in production.
+app.use('/api/whatsapp/template-approval', templateApprovalWebhookRoutes);
+app.use('/api/whatsapp/campaigns', campaignsRoutes);
+app.use('/api/whatsapp/broadcasts',  broadcastsRoutes);
+app.use('/api/whatsapp/nurtures',  nurturesRoutes);
+app.use('/api/whatsapp/ai', aiReplyAssistantRoutes);
+app.use('/api/whatsapp/automationRules', automationRulesRoutes);
 
 /*
 |--------------------------------------------------------------------------

@@ -35,6 +35,9 @@ export const APPROVAL_STATUS = Object.freeze({
   ACTIVE: 'ACTIVE',
   PAUSED: 'PAUSED',
   ARCHIVED: 'ARCHIVED',
+  // Extended by the templateApproval module
+  REJECTED: 'REJECTED',
+  DISABLED: 'DISABLED',
 });
 export const APPROVAL_STATUS_VALUES = Object.freeze(Object.values(APPROVAL_STATUS));
 

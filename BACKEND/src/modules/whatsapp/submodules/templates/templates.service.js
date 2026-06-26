@@ -225,7 +225,6 @@ export const templatesService = {
     const slug = data.slug
       ? await generateUniqueSlug(ctx, data.slug)
       : await generateUniqueSlug(ctx, data.name);
-
     const template = await templatesRepository.createTemplate({
       ...data,
       tenantId: ctx.tenantId,
