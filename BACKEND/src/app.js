@@ -27,6 +27,9 @@ import templatesRoutes from './modules/whatsapp/submodules/templates/templates.r
 import { templateApprovalRoutes, templateApprovalWebhookRoutes } from './modules/whatsapp/submodules/templateApproval/templateApproval.routes.js';
 import campaignsRoutes from './modules/whatsapp/submodules/campaigns/campaigns.routes.js';
 import broadcastsRoutes  from './modules/whatsapp/submodules/broadcasts/broadcasts.routes.js';
+import nurturesRoutes  from './modules/whatsapp/submodules/nurtures/nurtures.routes.js';
+import aiReplyAssistantRoutes from './modules/whatsapp/submodules/aiReplyAssistant/aiReplyAssistant.routes.js';
+import automationRulesRoutes   from './modules/whatsapp/submodules/automationRules/automationRules.routes.js';
 
 
 // ── Middleware Imports ────────────────────────────────────────────────────────
@@ -123,9 +126,11 @@ app.use('/api/whatsapp/templates', templatesRoutes);
 app.use('/api/whatsapp/templates', templateApprovalRoutes);
 // Provider webhooks: unauthenticated, verified by provider signature in production.
 app.use('/api/whatsapp/template-approval', templateApprovalWebhookRoutes);
-app.use('/appi/whatsapp/campaigns', campaignsRoutes);
+app.use('/api/whatsapp/campaigns', campaignsRoutes);
 app.use('/api/whatsapp/broadcasts',  broadcastsRoutes);
-
+app.use('/api/whatsapp/nurtures',  nurturesRoutes);
+app.use('/api/whatsapp/ai', aiReplyAssistantRoutes);
+app.use('/api/whatsapp/automationRules', automationRulesRoutes);
 
 /*
 |--------------------------------------------------------------------------

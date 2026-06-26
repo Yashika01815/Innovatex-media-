@@ -15,7 +15,9 @@ import {
 } from './submodules/templateApproval/templateApproval.routes.js';
 import campaignsRoutes from './submodules/campaigns/campaigns.routes.js';
 import broadcastsRoutes from './submodules/broadcasts/broadcasts.routes.js';
-// import nurturesRoutes from './submodules/nurtures/nurtures.routes.js';
+import nurturesRoutes from './submodules/nurtures/nurtures.routes.js';
+import aiReplyAssistantRoutes from './submodules/aiReplyAssistant/aiReplyAssistant.routes.js';
+import automationRulesRoutes   from './submodules/automationRules/automationRules.routes.js';
 
 const whatsappRouter = Router();
 
@@ -41,10 +43,16 @@ whatsappRouter.use('/inbox', inboxRoutes);
 whatsappRouter.use('/conversations', conversationRoutes);
 whatsappRouter.use('/messages', messageRoutes);
 whatsappRouter.use('/contacts', contactsRoutes);
+
 whatsappRouter.use('/templates', templatesRoutes);
-whatsappRouter.use('/template-approval', templateApprovalRoutes);
+whatsappRouter.use('/templates', templateApprovalRoutes);
+
+whatsappRouter.use('/template-approval', templateApprovalWebhookRoutes);
+
 whatsappRouter.use('/campaigns', campaignsRoutes);
 whatsappRouter.use('/broadcasts', broadcastsRoutes);
-// whatsappRouter.use('/nurtures', nurturesRoutes);
+whatsappRouter.use('/nurtures', nurturesRoutes);
+whatsappRouter.use('/ai', aiReplyAssistantRoutes);
+whatsappRouter.use('/automation-rules', automationRulesRoutes);
 
 export default whatsappRouter;

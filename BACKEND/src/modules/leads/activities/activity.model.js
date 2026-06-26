@@ -64,9 +64,20 @@ export const ACTIVITY_TYPE = Object.freeze({
   WHATSAPP_BROADCAST_FAILED:    'WhatsApp Broadcast Failed',
   WHATSAPP_BROADCAST_CANCELLED: 'WhatsApp Broadcast Cancelled',
   WHATSAPP_BROADCAST_DELETED:   'WhatsApp Broadcast Deleted',
-  // Exclusion events (shared by Broadcasts and future send modules)
+  // Exclusion events
   WHATSAPP_CONTACT_EXCLUDED_OPT_OUT:    'WhatsApp Contact Excluded: Opted Out',
   WHATSAPP_CONTACT_EXCLUDED_SUPPRESSED: 'WhatsApp Contact Excluded: No Consent',
+  // WhatsApp Nurtures module
+  WHATSAPP_NURTURE_CREATED:              'WhatsApp Nurture Created',
+  WHATSAPP_NURTURE_UPDATED:              'WhatsApp Nurture Updated',
+  WHATSAPP_NURTURE_ACTIVATED:            'WhatsApp Nurture Activated',
+  WHATSAPP_NURTURE_PAUSED:               'WhatsApp Nurture Paused',
+  WHATSAPP_NURTURE_ARCHIVED:             'WhatsApp Nurture Archived',
+  WHATSAPP_NURTURE_ENROLLMENT_CREATED:   'WhatsApp Nurture Enrollment Created',
+  WHATSAPP_NURTURE_ENROLLMENT_PAUSED:    'WhatsApp Nurture Enrollment Paused',
+  WHATSAPP_NURTURE_ENROLLMENT_RESUMED:   'WhatsApp Nurture Enrollment Resumed',
+  WHATSAPP_NURTURE_ENROLLMENT_COMPLETED: 'WhatsApp Nurture Enrollment Completed',
+  WHATSAPP_NURTURE_ENROLLMENT_CANCELLED: 'WhatsApp Nurture Enrollment Cancelled',
 });
 
 const activitySchema = new Schema(
