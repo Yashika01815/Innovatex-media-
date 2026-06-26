@@ -13,6 +13,8 @@ import { LEAD_STATUS }           from './lead.constants.js';
 
 // Booking integration — countBookingsByLead only, no circular dependency.
 // booking.service.js imports Lead directly (leadModel), NOT leadService.
+import { createTrackingEvent }         from '../../attribution/attribution.service.js';
+import { TRACKING_EVENT_TYPE }          from '../../attribution/attribution.constants.js';
 import { countBookingsByLead }        from '../../bookings/booking.service.js';
 import { countQualificationsByLead } from '../../qualification/qualification.service.js';
 
@@ -46,6 +48,16 @@ export const leadService = {
     await activityService.log(ctx, lead._id, ACTIVITY_TYPE.LEAD_CREATED, {
       message: `Lead "${lead.name || lead.email || lead.phone}" created`,
     });
+
+    // Emit LEAD_CREATED tracking event
+    createTrackingEvent({
+      tenant_id:  ctx.tenantId,
+      event_type: TRACKING_EVENT_TYPE.LEAD_CREATED,
+      lead_id:    lead._id,
+      source:     lead.source || null,
+      medium:     lead.medium || null,
+      campaign:   lead.campaign || null,
+    }).catch(() => {});
 
     leadEvents.created({
       tenantId: ctx.tenantId,

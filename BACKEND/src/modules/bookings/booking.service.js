@@ -67,8 +67,8 @@ const createNotification = async (tenantId, userId, title, body, metadata = {}) 
  * emitTrackingEvent — placeholder until the tracking module is built.
  * SOURCE: MASTER_SPEC §I2 TrackingEventType — 18 event types
  */
-const emitTrackingEvent = (eventType, leadId, tenantId, metadata = {}) => {
-  console.log(`[tracking] ${eventType}`, { leadId: String(leadId), tenantId, metadata });
+const emitTrackingEvent = async (eventType, leadId, tenantId, metadata = {}) => {
+  await createTrackingEvent({ tenant_id: tenantId, event_type: eventType, lead_id: leadId, ...metadata }).catch(() => {});
 };
 
 // =============================================================================

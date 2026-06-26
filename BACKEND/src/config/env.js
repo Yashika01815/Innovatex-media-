@@ -1,9 +1,16 @@
-import dotenv from "dotenv";
-import path from "path";
+/**
+ * Environment variable validation.
+ * FILE: src/config/env.js
+ *
+ * WHAT CHANGED:
+ *   - Added GEMINI_API_KEY to optional vars check with clear message
+ *   - Warns on startup if GEMINI_API_KEY is missing (app works but AI uses mock)
+ */
 
-dotenv.config({
-  path: path.resolve(process.cwd(), ".env"),
-});
+import dotenv from 'dotenv';
+import path   from 'path';
+
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
 const REQUIRED_VARS = [
   'PORT',
@@ -24,15 +31,12 @@ const validateEnv = () => {
     );
   }
 
-  // Validate JWT secret strength
   if (process.env.JWT_ACCESS_SECRET.length < 32) {
     throw new Error('JWT_ACCESS_SECRET must be at least 32 characters for security');
   }
   if (process.env.JWT_REFRESH_SECRET.length < 32) {
     throw new Error('JWT_REFRESH_SECRET must be at least 32 characters for security');
   }
-
-  // Validate ENCRYPTION_KEY format
   if (process.env.ENCRYPTION_KEY.length !== 64) {
     throw new Error(
       'ENCRYPTION_KEY must be exactly 64 hex characters (32 bytes).\n' +
@@ -41,6 +45,18 @@ const validateEnv = () => {
   }
   if (!/^[0-9a-fA-F]{64}$/.test(process.env.ENCRYPTION_KEY)) {
     throw new Error('ENCRYPTION_KEY must contain only hex characters (0-9, a-f)');
+  }
+
+  // GEMINI_API_KEY — optional but strongly recommended for production
+  if (!process.env.GEMINI_API_KEY) {
+    console.warn(
+      '\n⚠️  GEMINI_API_KEY is not set.' +
+      '\n   AI Qualification and Call Intelligence will use mock/deterministic mode.' +
+      '\n   Get your key from: https://aistudio.google.com/app/apikey' +
+      '\n   Add GEMINI_API_KEY=your_key to your .env file for real AI.\n'
+    );
+  } else {
+    console.log('✅ GEMINI_API_KEY detected — real AI is enabled');
   }
 };
 

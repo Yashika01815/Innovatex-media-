@@ -1,72 +1,44 @@
 /**
- * Call Intelligence Service — business logic + cross-module orchestration.
+ * Call Intelligence Service — Gemini powered.
  *
- * SOURCE: MASTER_SPEC.md §B9:
- *   "Log call (lead/outcome/transcript) → AI summary, extracted objections,
- *    next steps, follow-up draft, proposal outline, call score.
- *    On save: lead status + timeline + notify."
+ * FILE: src/modules/calls/call.service.js
  *
- * SOURCE: DEVELOPER_HANDOFF.md createCall action:
- *   "lead→Call Completed, track('Call Completed'), notify"
+ * WHAT CHANGED:
+ *   - generateAiSummaryMock renamed to generateAiSummary (now async)
+ *   - When GEMINI_API_KEY is set → calls Gemini API with real transcript
+ *   - Falls back to deterministic mock when key missing or transcript empty
+ *   - All other logic (lead update, deal advance, activity, notification) unchanged
  *
- * SOURCE: FRONTEND_SPEC §10 cross-page connected behaviour:
- *   "Log call → AI summary + lead status + timeline"
- *
- * Pattern matches booking.service.js exactly:
- *   - buildCtx() converts req.user → ctx
- *   - logActivity() wraps activityService.log() non-blocking
- *   - createNotification() non-blocking
- *   - emitTrackingEvent() placeholder
- *   - Named imports for Lead and Deal (export const Lead/Deal)
+ * ENV REQUIRED:
+ *   GEMINI_API_KEY — from https://aistudio.google.com/app/apikey
  */
 
 import * as callRepo from './call.repository.js';
 import {
   CALL_OUTCOME,
-  CALL_OUTCOME_VALUES,
   PIPELINE_STAGE_ON_CALL,
   LEAD_STATUS_ON_CALL,
   TRACKING_EVENT_ON_CALL,
   AI_API_KEY_ENV,
 } from './call.constants.js';
 
-// Named imports — Lead and Deal use named exports matching booking.service.js pattern
-import { Lead } from '../leads/lead/lead.model.js';
-import { Deal } from '../pipeline/deals/deal.model.js';
-
-// Activity logging — same service used by booking.service.js
+import { Lead }          from '../leads/lead/lead.model.js';
+import { Deal }          from '../pipeline/deals/deal.model.js';
 import { ACTIVITY_TYPE } from '../leads/activities/activity.model.js';
 import { activityService } from '../leads/activities/activity.service.js';
-
-// Notification model — fields: tenantId(String), userId(ObjectId), title, body, isRead, metadata
-import Notification from '../leads/notifications/notification.model.js';
-
-// AppError and paginationMeta — same import as booking.service.js
+import Notification      from '../leads/notifications/notification.model.js';
 import { AppError, paginationMeta } from '../../shared/helpers/lead.helpers.js';
 
-// Existing AI service — already implemented in leads/ai/
-// SOURCE: DEVELOPER_HANDOFF.md §aiService — summarizeCall(transcript, lead?)
-// returns: {summary, objections, nextSteps, followUpDraft, proposalOutline, score}
-
 // =============================================================================
-// PRIVATE HELPERS — identical pattern to booking.service.js
+// PRIVATE HELPERS
 // =============================================================================
 
-/**
- * buildCtx — converts req.user (JWT shape) to ctx shape used by all services.
- * req.user = { sub, tenantId, role, sessionId }  (from auth.middleware.js)
- * ctx      = { tenantId, userId, role }           (used by activityService etc.)
- */
 const buildCtx = (reqUser) => ({
   tenantId: reqUser.tenantId,
   userId:   reqUser.sub,
   role:     reqUser.role,
 });
 
-/**
- * logActivity — logs to lead activity timeline. Non-blocking, never throws.
- * Pattern matches booking.service.js logActivity exactly.
- */
 const logActivity = async (ctx, leadId, type, message, meta = {}) => {
   try {
     await activityService.log(ctx, leadId, type, { message, meta });
@@ -75,11 +47,6 @@ const logActivity = async (ctx, leadId, type, message, meta = {}) => {
   }
 };
 
-/**
- * createNotification — creates in-app notification. Non-blocking.
- * Notification model: tenantId(String), userId(ObjectId), title, body, isRead, metadata
- * Pattern matches booking.service.js createNotification exactly.
- */
 const createNotification = async (tenantId, userId, title, body, metadata = {}) => {
   try {
     if (!userId) return;
@@ -89,32 +56,56 @@ const createNotification = async (tenantId, userId, title, body, metadata = {}) 
   }
 };
 
-/**
- * emitTrackingEvent — placeholder until tracking module is built.
- * SOURCE: MASTER_SPEC §I2 TrackingEventType — 'Call Completed'
- * Pattern matches booking.service.js emitTrackingEvent exactly.
- */
-const emitTrackingEvent = (eventType, leadId, tenantId, metadata = {}) => {
-  console.log(`[tracking] ${eventType}`, { leadId: String(leadId), tenantId, metadata });
+// Attribution tracking service
+import { createTrackingEvent } from '../attribution/attribution.service.js';
+
+const emitTrackingEvent = async (eventType, leadId, tenantId, metadata = {}) => {
+  await createTrackingEvent({ tenant_id: tenantId, event_type: eventType, lead_id: leadId, ...metadata }).catch(() => {});
 };
 
-/**
- * generateAiSummaryMock — deterministic mock AI for call summary.
- * SOURCE: DEVELOPER_HANDOFF.md §aiService:
- *   summarizeCall(transcript, lead?) → {summary, objections, nextSteps, followUpDraft, proposalOutline, score}
- * SOURCE: FRONTEND_SPEC §10 call cards show:
- *   summary text, objections as tags ("Pricing concern", "Needs co-founder buy-in" etc.)
- * When AI_API_KEY is present in env, real AI can be wired here.
- */
-const generateAiSummaryMock = (lead, transcript, outcome) => {
-  const isAiLive = Boolean(process.env[AI_API_KEY_ENV]);
-  const name     = lead?.name || 'the lead';
-  const company  = lead?.company || '';
+// =============================================================================
+// GEMINI API CALL
+// =============================================================================
 
-  // Mock summary — mirrors the exact text shown in FRONTEND_SPEC §10 call cards
-  const summary = `${name}${company ? ` from ${company}` : ''} is experiencing slow lead follow-up causing pipeline leakage. Strong fit for AI qualification + WhatsApp automation. Budget sensitivity...`;
+const GEMINI_API_KEY = () => process.env.GEMINI_API_KEY || process.env[AI_API_KEY_ENV];
 
-  // Mock objections — match exactly what's shown on call cards in screenshot
+const GEMINI_URL = () =>
+  `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY()}`;
+
+const callGemini = async (prompt) => {
+  const response = await fetch(GEMINI_URL(), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.3, maxOutputTokens: 1024 },
+    }),
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`Gemini API error ${response.status}: ${err}`);
+  }
+
+  const data = await response.json();
+  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error('Gemini returned empty response');
+
+  // Strip markdown code fences if present
+  const clean = text.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+  return JSON.parse(clean);
+};
+
+// =============================================================================
+// MOCK FALLBACK
+// =============================================================================
+
+const mockSummary = (lead, outcome) => {
+  const name    = lead?.name || 'the lead';
+  const company = lead?.company || '';
+
+  const summary = `${name}${company ? ` from ${company}` : ''} is experiencing slow lead follow-up causing pipeline leakage. Strong fit for AI qualification + WhatsApp automation. Budget sensitivity noted during the call.`;
+
   const objections = [
     'Pricing concern',
     'Needs co-founder buy-in',
@@ -135,7 +126,6 @@ const generateAiSummaryMock = (lead, transcript, outcome) => {
     ? `Proposal for ${name}:\n1. Problem: Pipeline leakage from slow follow-up\n2. Solution: InnovateX AI qualification + WhatsApp automation\n3. Investment: Custom pricing based on team size\n4. Timeline: 2-week onboarding`
     : '';
 
-  // Score based on outcome — mirrors FRONTEND_SPEC §10 "Score 7/10", "Score 5/10"
   const scoreMap = {
     [CALL_OUTCOME.INTERESTED]:         8,
     [CALL_OUTCOME.CLOSED_WON]:         9,
@@ -147,11 +137,73 @@ const generateAiSummaryMock = (lead, transcript, outcome) => {
   };
   const score = scoreMap[outcome] || 5;
 
-  return { summary, objections, next_steps, follow_up_draft, proposal_outline, score, isAiLive };
+  return { summary, objections, next_steps, follow_up_draft, proposal_outline, score, isAiLive: false };
 };
 
 // =============================================================================
-// GET CALLS — paginated list
+// MAIN AI SUMMARY FUNCTION — Gemini or mock
+// =============================================================================
+
+/**
+ * generateAiSummary — generates call summary using Gemini when API key is set.
+ * Falls back to mock when key missing or transcript is empty.
+ * NOW ASYNC — all callers use await.
+ */
+const generateAiSummary = async (lead, transcript, outcome) => {
+  const hasKey        = Boolean(GEMINI_API_KEY());
+  const hasTranscript = transcript && transcript.trim().length > 10;
+
+  // Use mock if no API key or no real transcript to analyse
+  if (!hasKey || !hasTranscript) {
+    return mockSummary(lead, outcome);
+  }
+
+  const prompt = `You are an expert sales call analyst for InnovateX Revenue OS.
+
+Analyse this sales call and return ONLY a valid JSON object with NO markdown:
+
+LEAD: ${lead?.name || 'Unknown'} from ${lead?.company || 'Unknown'}
+OUTCOME: ${outcome}
+TRANSCRIPT:
+${transcript}
+
+Return this exact JSON structure:
+{
+  "summary": "<2-3 sentence summary of the key points discussed>",
+  "objections": ["<objection 1>", "<objection 2>", "<objection 3>"],
+  "next_steps": ["<step 1>", "<step 2>", "<step 3>"],
+  "follow_up_draft": "<ready-to-send follow-up message personalised to this call>",
+  "proposal_outline": "<if outcome is Proposal Requested: outline the proposal, else empty string>",
+  "score": <integer 1-10 call quality score>
+}
+
+Scoring guide for score field:
+- 8-10: Excellent call, clear next steps, strong engagement
+- 5-7:  Good call, some unclear areas, moderate engagement  
+- 1-4:  Poor call, objections unresolved, low engagement or no-show`;
+
+  try {
+    const result = await callGemini(prompt);
+
+    if (!result.summary) throw new Error('Invalid response from Gemini');
+
+    return {
+      summary:          result.summary          || '',
+      objections:       Array.isArray(result.objections)  ? result.objections  : [],
+      next_steps:       Array.isArray(result.next_steps)  ? result.next_steps  : [],
+      follow_up_draft:  result.follow_up_draft  || '',
+      proposal_outline: result.proposal_outline || '',
+      score:            Math.max(1, Math.min(10, Math.round(Number(result.score) || 5))),
+      isAiLive:         true,
+    };
+  } catch (err) {
+    console.warn(`[calls] Gemini failed, using mock fallback: ${err.message}`);
+    return mockSummary(lead, outcome);
+  }
+};
+
+// =============================================================================
+// GET CALLS
 // =============================================================================
 
 export const getCalls = async (tenantId, filter = {}, options = {}) => {
@@ -163,10 +215,7 @@ export const getCalls = async (tenantId, filter = {}, options = {}) => {
     callRepo.countByTenantId(tenantId, filter),
   ]);
 
-  return {
-    calls,
-    pagination: paginationMeta({ page, limit, total }),
-  };
+  return { calls, pagination: paginationMeta({ page, limit, total }) };
 };
 
 // =============================================================================
@@ -180,52 +229,29 @@ export const getCallById = async (tenantId, id) => {
 };
 
 // =============================================================================
-// GET KPI SUMMARY — 4 cards in FRONTEND_SPEC §10
+// GET KPI SUMMARY
 // =============================================================================
 
 export const getKpiSummary = (tenantId) => callRepo.getKpiCounts(tenantId);
 
 // =============================================================================
-// COUNT CALLS BY LEAD — used by lead.service.js getLeadDetails()
+// COUNT / GET BY LEAD
 // =============================================================================
 
 export const countCallsByLead = (tenantId, leadId) =>
   callRepo.countByLead(tenantId, leadId);
 
-// =============================================================================
-// GET CALLS BY LEAD — for lead detail drawer
-// =============================================================================
-
 export const getCallsByLead = (tenantId, leadId) =>
   callRepo.findByLead(tenantId, leadId);
 
 // =============================================================================
-// CREATE CALL — main function with all connected effects
+// CREATE CALL
 // =============================================================================
 
-/**
- * createCall — logs a call and fires all connected side effects.
- *
- * CONNECTED EFFECTS (DEVELOPER_HANDOFF.md createCall + MASTER_SPEC §B9):
- *   1. Verify lead exists in tenant
- *   2. Generate AI summary (mock or real)
- *   3. Create call document
- *   4. Update lead.status → 'Call Completed'
- *   5. Advance pipeline deal → 'Call Completed' stage
- *   6. Link deal._id back to call
- *   7. Log 'Call Completed' to lead activity timeline
- *   8. Create in-app notification for assigned user
- *   9. Emit tracking event 'Call Completed'
- *
- * @param {Object} data    — validated request body (snake_case field names)
- * @param {Object} reqUser — req.user from authenticate middleware
- *                           { sub, tenantId, role, sessionId }
- */
 export const createCall = async (data, reqUser) => {
   const ctx = buildCtx(reqUser);
 
-  // ── 1. Verify lead exists in this tenant ──────────────────────────────────
-  // Lead uses tenant_id (String) — String(ctx.tenantId) for comparison
+  // 1. Verify lead
   const lead = await Lead.findOne({
     _id:       data.lead_id,
     tenant_id: String(ctx.tenantId),
@@ -233,12 +259,10 @@ export const createCall = async (data, reqUser) => {
   });
   if (!lead) throw AppError.notFound('Lead not found in this workspace');
 
-  // ── 2. Generate AI summary (mock) ─────────────────────────────────────────
-  // SOURCE: FRONTEND_SPEC §10 "Generate AI summary" button in Log Call modal
-  // Always generated on create — can be regenerated via regenerateAiSummary()
-  const aiResult = generateAiSummaryMock(lead, data.transcript || '', data.outcome);
+  // 2. Generate AI summary (Gemini or mock)
+  const aiResult = await generateAiSummary(lead, data.transcript || '', data.outcome);
 
-  // ── 3. Create call document ───────────────────────────────────────────────
+  // 3. Create call document
   const call = await callRepo.create({
     tenant_id:        String(ctx.tenantId),
     lead_id:          data.lead_id,
@@ -249,7 +273,6 @@ export const createCall = async (data, reqUser) => {
     transcript:       data.transcript       || '',
     source:           lead.source           || null,
     campaign:         lead.campaign         || null,
-    // AI-generated fields
     summary:          aiResult.summary,
     objections:       aiResult.objections,
     next_steps:       aiResult.next_steps,
@@ -260,17 +283,13 @@ export const createCall = async (data, reqUser) => {
     created_by:       ctx.userId,
   });
 
-  // ── 4. Update lead.status → 'Call Completed' ──────────────────────────────
-  // SOURCE: DEVELOPER_HANDOFF.md "lead→Call Completed"
+  // 4. Update lead status
   await Lead.findOneAndUpdate(
     { _id: data.lead_id, tenant_id: String(ctx.tenantId) },
     { $set: { status: LEAD_STATUS_ON_CALL } }
   );
 
-  // ── 5. Advance pipeline deal → 'Call Completed' stage ────────────────────
-  // SOURCE: DEVELOPER_HANDOFF.md createCall side effects
-  // PIPELINE_STAGE_ON_CALL = 'Call Completed' matches DEAL_STAGE.CALL_COMPLETED
-  // Only advance if deal is not already at Won/Lost stage
+  // 5. Advance pipeline deal
   const openDeal = await Deal.findOne({
     tenant_id: String(ctx.tenantId),
     lead_id:   data.lead_id,
@@ -296,7 +315,6 @@ export const createCall = async (data, reqUser) => {
       { new: true }
     );
   } else {
-    // Create a new deal in Call Completed stage if none exists
     deal = await Deal.create({
       tenant_id:        String(ctx.tenantId),
       lead_id:          data.lead_id,
@@ -314,28 +332,21 @@ export const createCall = async (data, reqUser) => {
     });
   }
 
-  // ── 6. Link deal back to call ─────────────────────────────────────────────
+  // 6. Link deal to call
   if (deal) {
     await callRepo.updateById(String(ctx.tenantId), call._id, { deal_id: deal._id });
   }
 
-  // ── 7. Log to lead activity timeline ──────────────────────────────────────
-  // ACTIVITY_TYPE.CALL_COMPLETED = 'Call Completed' — already in activity.model.js
+  // 7. Activity log
   await logActivity(
     ctx,
     data.lead_id,
     ACTIVITY_TYPE.CALL_COMPLETED,
     `Call logged — outcome: ${data.outcome}. Score: ${aiResult.score}/10`,
-    {
-      call_id:    String(call._id),
-      outcome:    data.outcome,
-      call_date:  data.call_date,
-      score:      aiResult.score,
-    }
+    { call_id: String(call._id), outcome: data.outcome, call_date: data.call_date, score: aiResult.score }
   );
 
-  // ── 8. Create in-app notification ─────────────────────────────────────────
-  // SOURCE: MASTER_SPEC §B9 "notify" + DEVELOPER_HANDOFF.md createCall "notify"
+  // 8. Notification
   await createNotification(
     String(ctx.tenantId),
     data.assigned_user_id,
@@ -344,12 +355,11 @@ export const createCall = async (data, reqUser) => {
     { call_id: String(call._id), lead_id: String(data.lead_id), outcome: data.outcome }
   );
 
-  // ── 9. Emit tracking event ────────────────────────────────────────────────
-  // SOURCE: MASTER_SPEC §I2 TrackingEventType — 'Call Completed'
+  // 9. Tracking event
   emitTrackingEvent(TRACKING_EVENT_ON_CALL, data.lead_id, ctx.tenantId, {
-    call_id:  String(call._id),
-    outcome:  data.outcome,
-    score:    aiResult.score,
+    call_id: String(call._id),
+    outcome: data.outcome,
+    score:   aiResult.score,
   });
 
   return call;
@@ -359,47 +369,32 @@ export const createCall = async (data, reqUser) => {
 // UPDATE CALL
 // =============================================================================
 
-/**
- * updateCall — updates a call record (manual edits after saving).
- */
 export const updateCall = async (tenantId, id, patch, reqUser) => {
   const ctx = buildCtx(reqUser);
-
   const call = await callRepo.findById(tenantId, id);
   if (!call) throw AppError.notFound('Call not found');
-
-  const updated = await callRepo.updateById(tenantId, id, {
-    ...patch,
-    updated_by: ctx.userId,
-  });
-
-  return updated;
+  return callRepo.updateById(tenantId, id, { ...patch, updated_by: ctx.userId });
 };
 
 // =============================================================================
 // REGENERATE AI SUMMARY
 // =============================================================================
 
-/**
- * regenerateAiSummary — re-runs AI on an existing call's transcript.
- * SOURCE: FRONTEND_SPEC §10 "Generate AI summary" button
- * Can be called after the user updates the transcript.
- */
 export const regenerateAiSummary = async (tenantId, id, reqUser) => {
   const ctx = buildCtx(reqUser);
 
   const call = await callRepo.findById(tenantId, id);
   if (!call) throw AppError.notFound('Call not found');
 
-  // Re-fetch lead for AI context
   const lead = await Lead.findOne({
     _id:       call.lead_id,
     tenant_id: String(tenantId),
   });
 
-  const aiResult = generateAiSummaryMock(lead, call.transcript || '', call.outcome);
+  // Use current transcript from DB for regeneration
+  const aiResult = await generateAiSummary(lead, call.transcript || '', call.outcome);
 
-  const updated = await callRepo.updateById(tenantId, id, {
+  return callRepo.updateById(tenantId, id, {
     summary:          aiResult.summary,
     objections:       aiResult.objections,
     next_steps:       aiResult.next_steps,
@@ -409,6 +404,4 @@ export const regenerateAiSummary = async (tenantId, id, reqUser) => {
     ai_generated:     true,
     updated_by:       ctx.userId,
   });
-
-  return updated;
 };

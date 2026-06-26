@@ -104,8 +104,11 @@ const createNotification = async (tenantId, userId, title, body, metadata = {}) 
  * SOURCE: MASTER_SPEC §I2 TrackingEventType — 'AI Qualified'
  * Pattern matches booking.service.js emitTrackingEvent exactly.
  */
-const emitTrackingEvent = (eventType, leadId, tenantId, metadata = {}) => {
-  console.log(`[tracking] ${eventType}`, { leadId: String(leadId), tenantId, metadata });
+// Attribution tracking service
+import { createTrackingEvent } from '../attribution/attribution.service.js';
+
+const emitTrackingEvent = async (eventType, leadId, tenantId, metadata = {}) => {
+  await createTrackingEvent({ tenant_id: tenantId, event_type: eventType, lead_id: leadId, ...metadata }).catch(() => {});
 };
 
 /**
@@ -200,7 +203,7 @@ export const runQualification = async (leadId, answers, reqUser) => {
   // SOURCE: modules/leads/ai/qualification-ai.service.js
   // Returns: { fitScore, temperature, quality, buyingIntent, urgency,
   //            painPoints, recommendedOffer, nextAction, followUpDraft, isLive }
-  const assessment = qualificationAiService.assess(lead.toObject(), answers || {});
+  const assessment = await qualificationAiService.assess(lead.toObject(), answers || {});
 
   // ── 3. Determine suggested route from temperature ─────────────────────────
   const suggested_route = getSuggestedRoute(assessment.temperature);
