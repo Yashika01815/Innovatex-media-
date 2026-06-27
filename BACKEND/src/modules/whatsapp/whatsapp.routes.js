@@ -18,6 +18,8 @@ import broadcastsRoutes from './submodules/broadcasts/broadcasts.routes.js';
 import nurturesRoutes from './submodules/nurtures/nurtures.routes.js';
 import aiReplyAssistantRoutes from './submodules/aiReplyAssistant/aiReplyAssistant.routes.js';
 import automationRulesRoutes   from './submodules/automationRules/automationRules.routes.js';
+import deliveryLogsRoutes      from './submodules/deliveryLogs/deliveryLogs.routes.js';
+import consentRoutes           from './submodules/consent/consent.routes.js';
 
 const whatsappRouter = Router();
 
@@ -54,5 +56,7 @@ whatsappRouter.use('/broadcasts', broadcastsRoutes);
 whatsappRouter.use('/nurtures', nurturesRoutes);
 whatsappRouter.use('/ai', aiReplyAssistantRoutes);
 whatsappRouter.use('/automation-rules', automationRulesRoutes);
+whatsappRouter.use('/delivery-logs', deliveryLogsRoutes);
+whatsappRouter.use('/consent', consentRoutes);
 
 export default whatsappRouter;
