@@ -11,10 +11,21 @@ import {
  * req.context (the WhatsApp module's withContext) so it works under either.
  */
 function buildCtx(req) {
+  console.log("========== BUILD CTX ==========");
+  console.log("req.user:", req.user);
+  console.log("req.context:", req.context);
+
   const user = req.user || {};
   const fallback = req.context || {};
   const tenantId = user.tenantId || fallback.tenantId;
-  if (!tenantId) throw new AppError(401, 'Missing tenant context');
+
+  console.log("Selected tenantId:", tenantId);
+  console.log("===============================");
+
+  if (!tenantId) {
+    throw new AppError(401, "Missing tenant context");
+  }
+
   return {
     tenantId,
     userId: user.id || user._id || fallback.userId || null,

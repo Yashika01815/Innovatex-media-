@@ -100,6 +100,35 @@ const templateSchema = new Schema(
     approvalComments: { type: String, default: '' },
     approvalHistory: { type: [approvalHistorySchema], default: [] },
 
+    // ── Approval workflow fields (managed by templateApproval module) ──────
+    submittedBy: { type: String, default: null },
+    submittedAt: { type: Date, default: null },
+    approvedBy: { type: String, default: null },
+    rejectedBy: { type: String, default: null },
+    providerRejectionReason: { type: String, default: null },
+    providerRejectionMessage: { type: String, default: null },
+
+    /**
+     * transitionHistory — append-only audit trail of every status change.
+     * Shape: { fromStatus, toStatus, action, comment, performedBy, performedAt }
+     */
+    transitionHistory: {
+      type: [
+        new Schema(
+          {
+            fromStatus: { type: String, default: null },
+            toStatus: { type: String, required: true },
+            action: { type: String, required: true },
+            comment: { type: String, default: '' },
+            performedBy: { type: String, default: null },
+            performedAt: { type: Date, default: Date.now },
+          },
+          { _id: false },
+        ),
+      ],
+      default: [],
+    },
+
     createdBy: { type: String, default: null },
     updatedBy: { type: String, default: null },
   },

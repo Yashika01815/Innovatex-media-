@@ -26,6 +26,7 @@ import asyncHandler from '../../utils/asyncHandler.js';
  * authenticate — verifies JWT and attaches req.user.
  * Throws 401 if token is missing, invalid, or expired.
  */
+
 export const authenticate = asyncHandler(async (req, res, next) => {
   const token = extractBearerToken(req);
 
@@ -58,6 +59,8 @@ export const authenticate = asyncHandler(async (req, res, next) => {
  * optionalAuthenticate — same as authenticate but doesn't throw if no token.
  * Used for routes that work both authenticated and unauthenticated.
  */
+
+
 export const optionalAuthenticate = asyncHandler(async (req, res, next) => {
   const token = extractBearerToken(req);
   if (!token) return next();
