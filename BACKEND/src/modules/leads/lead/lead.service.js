@@ -11,6 +11,7 @@ import { toLeadDTO, toLeadListDTOs } from '../../../shared/mappers/lead.mappers.
 import { AppError, paginationMeta } from '../../../shared/helpers/lead.helpers.js';
 import { LEAD_STATUS }           from './lead.constants.js';
 
+import { countPaymentsByLead }   from '../../payments/payment.service.js';
 // Booking integration — countBookingsByLead only, no circular dependency.
 // booking.service.js imports Lead directly (leadModel), NOT leadService.
 import { createTrackingEvent }         from '../../attribution/attribution.service.js';
@@ -188,7 +189,7 @@ export const leadService = {
   async getLeadDetails(ctx, id) {
     const lead = await this.getLead(ctx, id);
 
-    const [notes, timeline, noteCount, activityCount, bookingCount, qualificationCount] =
+    const [notes, timeline, noteCount, activityCount, bookingCount, qualificationCount, paymentCount] =
       await Promise.all([
         noteService.getNotes(ctx, id),
         activityService.getTimeline(ctx, id),
@@ -196,6 +197,7 @@ export const leadService = {
         activityService.count(ctx, id),
         countBookingsByLead(ctx.tenantId, String(lead._id)),
         countQualificationsByLead(ctx.tenantId, String(lead._id)),
+        countPaymentsByLead(ctx.tenantId, String(lead._id)),
       ]);
 
     return {
@@ -208,7 +210,7 @@ export const leadService = {
         bookings:       bookingCount,
         qualifications: qualificationCount,
         calls:          0,
-        payments:   0,
+        payments:       paymentCount,
         notes:      noteCount,
         activities: activityCount,
       },
