@@ -33,6 +33,8 @@ import aiReplyAssistantRoutes from './modules/whatsapp/submodules/aiReplyAssista
 import automationRulesRoutes   from './modules/whatsapp/submodules/automationRules/automationRules.routes.js';
 import deliveryLogsRoutes      from './modules/whatsapp/submodules/deliveryLogs/deliveryLogs.routes.js';
 import consentRoutes           from './modules/whatsapp/submodules/consent/consent.routes.js';
+import whatsappAnalyticsRoutes  from './modules/whatsapp/submodules/whatsappAnalytics/whatsappAnalytics.routes.js';
+import whatsappSettingsRoutes   from './modules/whatsapp/submodules/whatsappSettings/whatsappSettings.routes.js';
 
 
 // ── Middleware Imports ────────────────────────────────────────────────────────
@@ -137,6 +139,8 @@ app.use('/api/whatsapp/ai', aiReplyAssistantRoutes);
 app.use('/api/whatsapp/automationRules', automationRulesRoutes);
 app.use('/api/whatsapp/deliveryLogs', deliveryLogsRoutes);
 app.use('/api/whatsapp/consent', consentRoutes);
+app.use('/api/whatsapp/analytics', whatsappAnalyticsRoutes);
+app.use('/api/whatsapp/settings', whatsappSettingsRoutes);
 /*
 |--------------------------------------------------------------------------
 | 404 Handler — MUST come after all routes
