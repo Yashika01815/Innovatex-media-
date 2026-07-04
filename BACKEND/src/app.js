@@ -24,6 +24,8 @@ import qualificationRoutes from './modules/qualification/qualification.routes.js
 import attributionRoutes from './modules/attribution/attribution.routes.js';
 import teamRoutes  from './modules/team/team.routes.js';
 import bookingRoutes from './modules/bookings/booking.routes.js';
+import reportRoutes  from './modules/reports/report.routes.js';
+import automationRoutes from './modules/automations/automation.routes.js';
 import contactsRoutes from './modules/whatsapp/submodules/contacts/contacts.routes.js';
 import templatesRoutes from './modules/whatsapp/submodules/templates/templates.routes.js';
 
@@ -115,8 +117,12 @@ app.use('/api/whatsapp',  whatsappRouter);
 app.use('/api/calls',          callRoutes);
 app.use('/api/qualification', qualificationRoutes);
 app.use('/api/attribution',  attributionRoutes);
-app.use('/api/team',     teamRoutes);
-app.use('/api/bookings',       bookingRoutes);
+app.use('/api/team',         teamRoutes);
+app.use('/api/payments',     paymentRoutes);
+app.use('/api/campaigns',    campaignRoutes);
+app.use('/api/bookings',     bookingRoutes);
+app.use('/api/reports',      reportRoutes);
+app.use('/api/automations',  automationRoutes);
 app.use('/api/whatsapp/contacts', contactsRoutes);
 app.use('/api/whatsapp/templates', templatesRoutes);
 
