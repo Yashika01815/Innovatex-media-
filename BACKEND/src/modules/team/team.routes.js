@@ -1,0 +1,67 @@
+/**
+ * Team routes.
+ *
+ * FILE: src/modules/team/team.routes.js
+ *
+ * SOURCE: FRONTEND_SPEC §17 Team page — Admin section
+ *
+ * ROUTE MAP:
+ *   GET   /api/team              — list + KPI cards (all roles can view)
+ *   POST  /api/team              — add member (tenant_admin+)
+ *   GET   /api/team/:id          — single member (all roles)
+ *   PATCH /api/team/:id/role     — change role (tenant_admin+)
+ *   PATCH /api/team/:id/status   — activate/deactivate (tenant_admin+)
+ *
+ * Register in app.js:
+ *   import teamRoutes from './modules/team/team.routes.js';
+ *   app.use('/api/team', teamRoutes);
+ */
+
+import { Router } from 'express';
+import * as controller from './team.controller.js';
+import {
+  validateAddMember,
+  validateUpdateRole,
+  validateSetStatus,
+} from './team.validator.js';
+
+import { authenticate }  from '../../shared/middlewares/auth.middleware.js';
+import { resolveTenant } from '../../shared/middlewares/tenant.middleware.js';
+import { requireRole }   from '../../shared/middlewares/role.middleware.js';
+
+const router = Router();
+
+// Auth on ALL team routes
+router.use(authenticate);
+router.use(resolveTenant);
+
+// ── Static routes before /:id ─────────────────────────────────────────────────
+
+// Collection — GET all members + POST new member
+router
+  .route('/')
+  .get(controller.getTeamMembers)
+  .post(requireRole('tenant_admin'), validateAddMember, controller.addTeamMember);
+
+// ── Resource routes ───────────────────────────────────────────────────────────
+
+// Single member
+router.get('/:id', controller.getTeamMember);
+
+// Inline role change — tenant_admin and above
+router.patch(
+  '/:id/role',
+  requireRole('tenant_admin'),
+  validateUpdateRole,
+  controller.updateRole
+);
+
+// Activate / Deactivate — tenant_admin and above
+router.patch(
+  '/:id/status',
+  requireRole('tenant_admin'),
+  validateSetStatus,
+  controller.setStatus
+);
+
+export default router;

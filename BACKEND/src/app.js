@@ -22,21 +22,10 @@ import whatsappRouter from './modules/whatsapp/whatsapp.routes.js';
 import callRoutes          from './modules/calls/call.routes.js';
 import qualificationRoutes from './modules/qualification/qualification.routes.js';
 import attributionRoutes from './modules/attribution/attribution.routes.js';
-import paymentRoutes   from './modules/payments/payment.routes.js';
-import campaignRoutes  from './modules/campaigns/campaign.routes.js';
+import teamRoutes  from './modules/team/team.routes.js';
 import bookingRoutes from './modules/bookings/booking.routes.js';
 import contactsRoutes from './modules/whatsapp/submodules/contacts/contacts.routes.js';
 import templatesRoutes from './modules/whatsapp/submodules/templates/templates.routes.js';
-import { templateApprovalRoutes, templateApprovalWebhookRoutes } from './modules/whatsapp/submodules/templateApproval/templateApproval.routes.js';
-import campaignsRoutes from './modules/whatsapp/submodules/campaigns/campaigns.routes.js';
-import broadcastsRoutes  from './modules/whatsapp/submodules/broadcasts/broadcasts.routes.js';
-import nurturesRoutes  from './modules/whatsapp/submodules/nurtures/nurtures.routes.js';
-import aiReplyAssistantRoutes from './modules/whatsapp/submodules/aiReplyAssistant/aiReplyAssistant.routes.js';
-import automationRulesRoutes   from './modules/whatsapp/submodules/automationRules/automationRules.routes.js';
-import deliveryLogsRoutes      from './modules/whatsapp/submodules/deliveryLogs/deliveryLogs.routes.js';
-import consentRoutes           from './modules/whatsapp/submodules/consent/consent.routes.js';
-import whatsappAnalyticsRoutes  from './modules/whatsapp/submodules/whatsappAnalytics/whatsappAnalytics.routes.js';
-import whatsappSettingsRoutes   from './modules/whatsapp/submodules/whatsappSettings/whatsappSettings.routes.js';
 
 
 // ── Middleware Imports ────────────────────────────────────────────────────────
@@ -126,25 +115,11 @@ app.use('/api/whatsapp',  whatsappRouter);
 app.use('/api/calls',          callRoutes);
 app.use('/api/qualification', qualificationRoutes);
 app.use('/api/attribution',  attributionRoutes);
-app.use('/api/payments',   paymentRoutes);
-app.use('/api/campaigns',  campaignRoutes);
-app.use('/api/bookings',   bookingRoutes);
+app.use('/api/team',     teamRoutes);
+app.use('/api/bookings',       bookingRoutes);
 app.use('/api/whatsapp/contacts', contactsRoutes);
 app.use('/api/whatsapp/templates', templatesRoutes);
-// Template approval actions share the /api/whatsapp/templates/:id namespace.
-// Declared AFTER templatesRoutes so static routes (/categories, /languages) win first.
-app.use('/api/whatsapp/templates', templateApprovalRoutes);
-// Provider webhooks: unauthenticated, verified by provider signature in production.
-app.use('/api/whatsapp/template-approval', templateApprovalWebhookRoutes);
-app.use('/api/whatsapp/campaigns', campaignsRoutes);
-app.use('/api/whatsapp/broadcasts',  broadcastsRoutes);
-app.use('/api/whatsapp/nurtures',  nurturesRoutes);
-app.use('/api/whatsapp/ai', aiReplyAssistantRoutes);
-app.use('/api/whatsapp/automationRules', automationRulesRoutes);
-app.use('/api/whatsapp/deliveryLogs', deliveryLogsRoutes);
-app.use('/api/whatsapp/consent', consentRoutes);
-app.use('/api/whatsapp/analytics', whatsappAnalyticsRoutes);
-app.use('/api/whatsapp/settings', whatsappSettingsRoutes);
+
 /*
 |--------------------------------------------------------------------------
 | 404 Handler — MUST come after all routes

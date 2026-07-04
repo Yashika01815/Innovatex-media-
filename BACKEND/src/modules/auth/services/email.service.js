@@ -169,3 +169,29 @@ export const sendWelcomeEmail = async ({ email, firstName }) => {
     `,
   });
 };
+/**
+ * sendTeamInvite — sends an invite email when a new team member is added.
+ * Called by team.service.js addTeamMember().
+ *
+ * SOURCE: FRONTEND_SPEC §17 "Add user modal"
+ * SOURCE: MASTER_SPEC §B17 Team — "Add user"
+ */
+export const sendTeamInvite = async ({ to, firstName, tempPassword, loginUrl }) => {
+  await sendMail({
+    to,
+    subject: "You've been added to InnovateX Revenue OS",
+    html: `
+      <h2>Welcome to the team, ${firstName}! 👋</h2>
+      <p>You have been added as a team member on InnovateX Revenue OS.</p>
+      ${tempPassword ? `
+        <p>Your temporary password is:</p>
+        <p style="font-size:18px;font-weight:bold;letter-spacing:2px;background:#f1f5f9;padding:12px 16px;border-radius:6px;display:inline-block;">${tempPassword}</p>
+        <p>Please change your password after your first login.</p>
+      ` : ''}
+      <a href="${loginUrl}" style="display:inline-block;padding:12px 24px;background:#6366f1;color:#fff;border-radius:6px;text-decoration:none;margin-top:16px;">
+        Sign In Now
+      </a>
+      <p style="color:#94a3b8;font-size:12px;margin-top:24px;">If you did not expect this invitation, please ignore this email.</p>
+    `,
+  });
+};
