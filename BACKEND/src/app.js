@@ -15,6 +15,7 @@ import morgan      from 'morgan';
 import cookieParser from 'cookie-parser';
 
 // ── Route Imports ─────────────────────────────────────────────────────────────
+import dashboardRoutes from './modules/dashboard/dashboard.routes.js';
 import settingsRoutes from './modules/settings/settings.routes.js';
 import authRoutes     from './modules/auth/routes/auth.routes.js';
 import leadRoutes     from './modules/leads/lead/lead.routes.js';
@@ -110,7 +111,9 @@ app.use('/api', generalApiRateLimit);
 |--------------------------------------------------------------------------
 | API Routes
 |--------------------------------------------------------------------------
+
 */
+app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/settings',   settingsRoutes);
 app.use('/api/auth',      authRoutes);
 app.use('/api/leads',     leadRoutes);
