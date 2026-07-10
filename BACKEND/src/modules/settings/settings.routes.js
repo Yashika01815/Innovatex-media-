@@ -1,0 +1,87 @@
+/**
+ * Settings routes.
+ *
+ * FILE: src/modules/settings/settings.routes.js
+ *
+ * SOURCE: FRONTEND_SPEC §19 Settings (10 tabs):
+ *   Company · Branding · Lead Fields · Pipeline Stages · Qualification Questions
+ *   · Scoring Rules · Notifications · Consent & Data · Billing · Security
+ *
+ * ROUTE MAP:
+ *   GET  /api/settings                      — all 10 tabs data (page load)
+ *   PATCH /api/settings/company             — save Company tab
+ *   PATCH /api/settings/branding            — save Branding tab
+ *   GET  /api/settings/lead-fields          — read-only lead fields list
+ *   GET  /api/settings/pipeline-stages      — read-only pipeline stages
+ *   PATCH /api/settings/qualification       — save Qualification Questions
+ *   PATCH /api/settings/scoring-rules       — save Scoring Rules
+ *   PATCH /api/settings/notifications       — save Notification toggles
+ *   PATCH /api/settings/consent             — save Consent & Data
+ *   GET  /api/settings/billing              — read billing info
+ *   PATCH /api/settings/security            — save Security toggles
+ *
+ * PERMISSIONS:
+ *   GET  routes  — all authenticated roles (read_only_user can view settings)
+ *   PATCH routes — tenant_admin and above only
+ *
+ * Register in app.js:
+ *   import settingsRoutes from './modules/settings/settings.routes.js';
+ *   app.use('/api/settings', settingsRoutes);
+ */
+
+import { Router } from 'express';
+import * as controller from './settings.controller.js';
+import {
+  validateCompany,
+  validateBranding,
+  validateQualification,
+  validateScoringRules,
+  validateNotifications,
+  validateConsent,
+  validateSecurity,
+} from './settings.validator.js';
+
+import { authenticate }  from '../../shared/middlewares/auth.middleware.js';
+import { resolveTenant } from '../../shared/middlewares/tenant.middleware.js';
+import { requireRole }   from '../../shared/middlewares/role.middleware.js';
+
+const router = Router();
+
+// Auth on ALL settings routes
+router.use(authenticate);
+router.use(resolveTenant);
+
+// ── Full settings page — GET all tabs at once ─────────────────────────────────
+router.get('/', controller.getAllSettings);
+
+// ── Tab 1: Company ────────────────────────────────────────────────────────────
+router.patch('/company',       requireRole('tenant_admin'), validateCompany,       controller.updateCompany);
+
+// ── Tab 2: Branding ───────────────────────────────────────────────────────────
+router.patch('/branding',      requireRole('tenant_admin'), validateBranding,      controller.updateBranding);
+
+// ── Tab 3: Lead Fields (read-only) ────────────────────────────────────────────
+router.get('/lead-fields',     controller.getLeadFields);
+
+// ── Tab 4: Pipeline Stages (read-only — system-defined) ──────────────────────
+router.get('/pipeline-stages', controller.getPipelineStages);
+
+// ── Tab 5: Qualification Questions ───────────────────────────────────────────
+router.patch('/qualification',  requireRole('tenant_admin'), validateQualification, controller.updateQualification);
+
+// ── Tab 6: Scoring Rules ──────────────────────────────────────────────────────
+router.patch('/scoring-rules',  requireRole('tenant_admin'), validateScoringRules,  controller.updateScoringRules);
+
+// ── Tab 7: Notifications ──────────────────────────────────────────────────────
+router.patch('/notifications',  requireRole('tenant_admin'), validateNotifications, controller.updateNotifications);
+
+// ── Tab 8: Consent & Data ─────────────────────────────────────────────────────
+router.patch('/consent',        requireRole('tenant_admin'), validateConsent,       controller.updateConsent);
+
+// ── Tab 9: Billing (read-only — updated by payment webhooks) ─────────────────
+router.get('/billing',          controller.getBilling);
+
+// ── Tab 10: Security ──────────────────────────────────────────────────────────
+router.patch('/security',       requireRole('tenant_admin'), validateSecurity,      controller.updateSecurity);
+
+export default router;
