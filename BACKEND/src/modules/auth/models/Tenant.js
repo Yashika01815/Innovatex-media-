@@ -209,6 +209,13 @@ const tenantSchema = new Schema(
     openAIConnected:         { type: Boolean, default: false },
     googleCalendarConnected: { type: Boolean, default: false },
 
+    // ── Custom Settings (for Settings page)
+    qualificationQuestions: { type: [String], default: [] },
+    scoringRules:           { type: [{ factor: String, weight: Number, _id: false }], default: [] },
+    consentRequired:        { type: Boolean, default: true },
+    dataRetentionDays:      { type: Number, default: 365, min: 30 },
+    optOutKeywords:         { type: [String], default: ["STOP", "UNSUBSCRIBE", "OPTOUT"] },
+
     // ── Embedded Settings ─────────────────────────────────────────────────────
     branding:                { type: brandingSchema,                default: () => ({}) },
     whatsAppSettings:        { type: whatsAppSettingsSchema,        default: () => ({}) },
