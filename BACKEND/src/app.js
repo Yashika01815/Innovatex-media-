@@ -44,6 +44,7 @@ import deliveryLogsRoutes      from './modules/whatsapp/submodules/deliveryLogs/
 import consentRoutes           from './modules/whatsapp/submodules/consent/consent.routes.js';
 import whatsappAnalyticsRoutes  from './modules/whatsapp/submodules/whatsappAnalytics/whatsappAnalytics.routes.js';
 import whatsappSettingsRoutes   from './modules/whatsapp/submodules/whatsappSettings/whatsappSettings.routes.js';
+import teamRoutes from './modules/team/team.routes.js';
 
 
 // ── Middleware Imports ────────────────────────────────────────────────────────
@@ -146,6 +147,7 @@ app.use('/api/templates', templateRoutes);
 app.use('/api/integrations', integrationRoutes);
 app.use('/api/whatsapp/contacts', contactsRoutes);
 app.use('/api/whatsapp/templates', templatesRoutes);
+app.use('/api/team', teamRoutes);
 // Template approval actions share the /api/whatsapp/templates/:id namespace.
 // Declared AFTER templatesRoutes so static routes (/categories, /languages) win first.
 app.use('/api/whatsapp/templates', templateApprovalRoutes);

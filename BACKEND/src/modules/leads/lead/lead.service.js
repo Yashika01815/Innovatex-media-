@@ -18,6 +18,7 @@ import { createTrackingEvent }         from '../../attribution/attribution.servi
 import { TRACKING_EVENT_TYPE }          from '../../attribution/attribution.constants.js';
 import { countBookingsByLead }        from '../../bookings/booking.service.js';
 import { countQualificationsByLead } from '../../qualification/qualification.service.js';
+import { countCallsByLead }            from '../../calls/call.service.js';
 
 /**
  * Lead Service — business logic + cross-module orchestration.
@@ -189,7 +190,7 @@ export const leadService = {
   async getLeadDetails(ctx, id) {
     const lead = await this.getLead(ctx, id);
 
-    const [notes, timeline, noteCount, activityCount, bookingCount, qualificationCount, paymentCount] =
+    const [notes, timeline, noteCount, activityCount, bookingCount, qualificationCount, paymentCount, callCount] =
       await Promise.all([
         noteService.getNotes(ctx, id),
         activityService.getTimeline(ctx, id),
@@ -197,6 +198,7 @@ export const leadService = {
         activityService.count(ctx, id),
         countBookingsByLead(ctx.tenantId, String(lead._id)),
         countQualificationsByLead(ctx.tenantId, String(lead._id)),
+        countCallsByLead(ctx.tenantId, String(lead._id)),
         countPaymentsByLead(ctx.tenantId, String(lead._id)),
       ]);
 
@@ -209,7 +211,7 @@ export const leadService = {
         deals:      0,
         bookings:       bookingCount,
         qualifications: qualificationCount,
-        calls:          0,
+        calls:          callCount,
         payments:       paymentCount,
         notes:      noteCount,
         activities: activityCount,
