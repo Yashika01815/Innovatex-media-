@@ -1,0 +1,32 @@
+import { useAuthStore } from '@/store/authStore';
+import { leadPermissions, dealPermissions, isSuperAdmin } from '@/lib/permissions';
+
+/**
+ * usePermissions -- reads the CURRENT user's real role from authStore and
+ * evaluates every permission against it, so components don't need to pass
+ * `role` around manually. Extend this with a new namespaced section
+ * (e.g. `pipeline: {...}`) as each module gets migrated to the real API --
+ * same pattern, mirroring that module's actual backend role floors.
+ */
+export function usePermissions() {
+  const role = useAuthStore((s) => s.user?.role);
+
+  return {
+    role,
+    isSuperAdmin: isSuperAdmin(role),
+    leads: {
+      canCreate: leadPermissions.canCreate(role),
+      canUpdate: leadPermissions.canUpdate(role),
+      canAssign: leadPermissions.canAssign(role),
+      canExport: leadPermissions.canExport(role),
+      canDelete: leadPermissions.canDelete(role),
+      canImport: leadPermissions.canImport(role),
+    },
+    pipeline: {
+      canCreate: dealPermissions.canCreate(role),
+      canUpdate: dealPermissions.canUpdate(role),
+      canMove: dealPermissions.canMove(role),
+      canDelete: dealPermissions.canDelete(role),
+    },
+  };
+}

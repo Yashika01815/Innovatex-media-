@@ -1,0 +1,1 @@
+export { interaktAdapter } from './index';

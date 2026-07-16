@@ -1,0 +1,1 @@
+export { gallaboxAdapter } from './index';

@@ -1,0 +1,1 @@
+export { watiAdapter } from './index';

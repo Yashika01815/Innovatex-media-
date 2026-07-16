@@ -1,0 +1,1 @@
+export { metaWhatsAppAdapter } from './index';

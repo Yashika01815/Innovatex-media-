@@ -1,0 +1,1 @@
+export { customWebhookAdapter } from './index';

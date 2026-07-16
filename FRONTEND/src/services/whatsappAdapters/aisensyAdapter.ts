@@ -1,0 +1,1 @@
+export { aisensyAdapter } from './index';
