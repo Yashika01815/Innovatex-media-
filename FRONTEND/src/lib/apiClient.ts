@@ -142,10 +142,19 @@ async function throwIfError(res: Response): Promise<void> {
   throw new ApiError(body.message || 'Request failed', res.status, body.errors);
 }
 
+export interface PaginationMeta {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+  hasNext: boolean;
+  hasPrev: boolean;
+}
+
 /**
  * request -- for endpoints using the standard envelope
- * { success, message, data }. This is every module EXCEPT Leads (see
- * requestRaw below). Returns `data` directly.
+ * { success, message, data }. This is every module EXCEPT Leads/Pipeline
+ * (see requestRaw below). Returns `data` directly.
  */
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const res = await doRequest(path, options);
@@ -158,6 +167,28 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     throw new ApiError(envelope.message || 'Request failed', res.status, envelope.errors);
   }
   return envelope.data;
+}
+
+/**
+ * requestPaginated -- for standard-envelope endpoints built with
+ * sendPaginated(res, data, pagination) (see src/utils/apiResponse.js).
+ * Pagination lives in envelope.meta.pagination, NOT alongside `data` the
+ * way Leads/Pipeline's raw { data, pagination } shape does -- this is a
+ * genuinely different envelope, not just a naming difference, so it needs
+ * its own function rather than reusing request() or requestRaw().
+ */
+export async function requestPaginated<T>(path: string, options: RequestOptions = {}): Promise<{ data: T[]; pagination: PaginationMeta }> {
+  const res = await doRequest(path, options);
+  await throwIfError(res);
+
+  const envelope = (await res.json()) as ApiEnvelope<T[]> & { meta?: { pagination?: PaginationMeta } };
+  if (!envelope.success) {
+    throw new ApiError(envelope.message || 'Request failed', res.status, envelope.errors);
+  }
+  const pagination = envelope.meta?.pagination ?? {
+    page: 1, limit: envelope.data.length, total: envelope.data.length, totalPages: 1, hasNext: false, hasPrev: false,
+  };
+  return { data: envelope.data, pagination };
 }
 
 /**
@@ -227,6 +258,7 @@ export async function requestFormDataRaw<T>(path: string, formData: FormData, qu
 
 export const apiClient = {
   get: <T>(path: string, query?: RequestOptions['query']) => request<T>(path, { method: 'GET', query }),
+  getPaginated: <T>(path: string, query?: RequestOptions['query']) => requestPaginated<T>(path, { method: 'GET', query }),
   post: <T>(path: string, body?: unknown) => request<T>(path, { method: 'POST', body }),
   patch: <T>(path: string, body?: unknown) => request<T>(path, { method: 'PATCH', body }),
   put: <T>(path: string, body?: unknown) => request<T>(path, { method: 'PUT', body }),

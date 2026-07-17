@@ -61,6 +61,31 @@ export const dealPermissions = {
 };
 
 /**
+ * Booking permissions -- mirrors booking.routes.js exactly:
+ *
+ *   GET routes have no requireRole() at all -- any authenticated role can read.
+ *   POST /, PATCH /:id/status, POST /:id/reschedule all require sales_user+.
+ *   There is NO delete/cancel endpoint on this backend at all.
+ */
+export const bookingPermissions = {
+  canCreate: (role: AuthRole | null | undefined) => atLeast(role, 'sales_user'),
+  canUpdateStatus: (role: AuthRole | null | undefined) => atLeast(role, 'sales_user'),
+  canReschedule: (role: AuthRole | null | undefined) => atLeast(role, 'sales_user'),
+};
+
+/**
+ * Call permissions -- mirrors call.routes.js exactly:
+ *   GET routes: no requireRole -- any authenticated role can read.
+ *   POST /, PATCH /:id, POST /:id/ai-summary all require sales_user+.
+ *   No delete endpoint exists.
+ */
+export const callPermissions = {
+  canCreate: (role: AuthRole | null | undefined) => atLeast(role, 'sales_user'),
+  canUpdate: (role: AuthRole | null | undefined) => atLeast(role, 'sales_user'),
+  canRegenerateAiSummary: (role: AuthRole | null | undefined) => atLeast(role, 'sales_user'),
+};
+
+/**
  * super_admin-only gate -- used for nav visibility. This is the ONE case
  * where hiding an entire section (not just an action) is correct, because
  * Super Admin routes operate in a fundamentally different, tenant-less
