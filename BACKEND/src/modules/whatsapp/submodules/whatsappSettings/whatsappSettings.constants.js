@@ -28,6 +28,19 @@ export const PROVIDER_MODE = Object.freeze({
 });
 export const PROVIDER_MODE_VALUES = Object.freeze(Object.values(PROVIDER_MODE));
 
+// ── Panel mode -- whether InnovateX's own Inbox is the real send/receive
+// surface (NATIVE) or the tenant's WhatsApp activity actually lives in a
+// third-party BSP's own dashboard (THIRD_PARTY), with InnovateX as a
+// secondary view. Phase 1 scope: only NATIVE + META_CLOUD has a real,
+// working send/receive/webhook/realtime path. THIRD_PARTY is a real,
+// stored value but has no implemented behavior yet -- same "real enum,
+// not-yet-implemented adapter" pattern as the other 8 provider values.
+export const PANEL_MODE = Object.freeze({
+  NATIVE: 'NATIVE',
+  THIRD_PARTY: 'THIRD_PARTY',
+});
+export const PANEL_MODE_VALUES = Object.freeze(Object.values(PANEL_MODE));
+
 // ── AI providers (mirrors aiReplyAssistant) ────────────────────────────────────
 export const AI_PROVIDER = Object.freeze({
   MOCK:   'MOCK',

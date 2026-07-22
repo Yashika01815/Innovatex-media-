@@ -1,6 +1,6 @@
 import type { ApiEnvelope } from '@/types/auth';
 
-const BASE_URL: string = import.meta.env.VITE_API_URL ?? 'http://localhost:4000/api';
+const BASE_URL: string = import.meta.env.VITE_API_URL ?? 'http://localhost:4001/api';
 
 /**
  * ApiError -- thrown for any non-2xx or { success: false } response.

@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Plus, Send, Sparkles, Copy, CheckCircle2, XCircle, MessageSquare, Server, RefreshCw,
+  ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { useStore } from '@/store/store';
 import { useDb, useSettings, userName } from '@/store/hooks';
@@ -17,6 +18,11 @@ import { generateWhatsAppReply, rewriteWhatsAppMessage } from '@/services/aiServ
 import { syncFromProvider } from '@/services/whatsappService';
 import { formatCurrency, formatDateTime, timeAgo, percent } from '@/utils/formatters';
 import { toast } from '@/store/toastStore';
+import { useLeads } from '@/hooks/useLeads';
+import { useWhatsAppSettings } from '@/hooks/useWhatsAppSettings';
+import { PROVIDER_LABELS, IMPLEMENTED_PROVIDERS } from '@/types/whatsappSettings';
+import type { WhatsAppProvider as WhatsAppProviderReal, PanelMode, WhatsAppSettingsSync } from '@/types/whatsappSettings';
+import { ApiError } from '@/lib/apiClient';
 import type { WhatsAppTemplate, WhatsAppProvider } from '@/types';
 
 const TABS = [
@@ -73,27 +79,61 @@ export function WhatsAppPanel() {
 }
 
 // ---- Contacts --------------------------------------------------------------
+/**
+ * ContactsTab -- per DEVELOPER_HANDOFF.md's entity list, there is NO
+ * separate WhatsAppContact entity in spec. Tab #2 is literally named
+ * "Contacts / Leads" -- every field it needs (whatsapp_number,
+ * consent_status, opt_out_status, last_contacted_at, qualification_score)
+ * already lives on the real Lead entity. This reuses useLeads() (the same
+ * hook the Leads page uses) rather than a separate WhatsApp-specific
+ * collection, matching the mock's own db.leads-based implementation.
+ *
+ * NOTE: the backend still has a separate WhatsAppContact model used
+ * internally by Campaigns/Broadcasts/Analytics for audience targeting --
+ * that's a deliberate, deferred decision (see conversation), not something
+ * this tab depends on.
+ */
 function ContactsTab() {
-  const { db, tenantId } = useDb();
-  const leads = db.leads.filter((l) => l.tenant_id === tenantId && !l.archived);
+  const [page, setPage] = useState(1);
+  const { leads, pagination, loading, error } = useLeads({ page, limit: 20 });
+
   return (
     <Card>
-      <CardHeader title="WhatsApp Contacts" subtitle={`${leads.length} contacts synced`} />
-      <Table>
-        <thead><tr><Th>Contact</Th><Th>WhatsApp</Th><Th>Consent</Th><Th>Opt-out</Th><Th>Last contacted</Th><Th>Score</Th></tr></thead>
-        <tbody>
-          {leads.slice(0, 25).map((l) => (
-            <Tr key={l.id}>
-              <Td><div className="flex items-center gap-2"><Avatar name={l.name} color="#22c55e" size={30} /><span className="font-medium">{l.name}</span></div></Td>
-              <Td className="font-mono text-xs">{l.whatsapp_number}</Td>
-              <Td><Badge tone={l.consent_status === 'granted' ? 'green' : 'amber'}>{l.consent_status}</Badge></Td>
-              <Td>{l.opt_out_status ? <Badge tone="red">Opted out</Badge> : <Badge tone="gray">No</Badge>}</Td>
-              <Td className="text-ink-500">{timeAgo(l.last_contacted_at)}</Td>
-              <Td className="font-semibold">{l.qualification_score}/10</Td>
-            </Tr>
-          ))}
-        </tbody>
-      </Table>
+      <CardHeader title="WhatsApp Contacts" subtitle={pagination ? `${pagination.total} contacts synced` : 'Loading…'} />
+      {error ? (
+        <EmptyState title="Couldn't load contacts" description={error} />
+      ) : loading && leads.length === 0 ? (
+        <p className="p-8 text-center text-sm text-ink-400">Loading contacts…</p>
+      ) : leads.length === 0 ? (
+        <EmptyState title="No contacts yet" description="Leads with a WhatsApp number will appear here." />
+      ) : (
+        <>
+          <Table>
+            <thead><tr><Th>Contact</Th><Th>WhatsApp</Th><Th>Consent</Th><Th>Opt-out</Th><Th>Last contacted</Th><Th>Score</Th></tr></thead>
+            <tbody>
+              {leads.map((l) => (
+                <Tr key={l.id}>
+                  <Td><div className="flex items-center gap-2"><Avatar name={l.name} color="#22c55e" size={30} /><span className="font-medium">{l.name}</span></div></Td>
+                  <Td className="font-mono text-xs">{l.whatsapp_number || l.phone}</Td>
+                  <Td><Badge tone={l.consent_status === 'granted' ? 'green' : 'amber'}>{l.consent_status}</Badge></Td>
+                  <Td>{l.opt_out_status ? <Badge tone="red">Opted out</Badge> : <Badge tone="gray">No</Badge>}</Td>
+                  <Td className="text-ink-500">{timeAgo(l.last_contacted_at)}</Td>
+                  <Td className="font-semibold">{l.qualification_score}/10</Td>
+                </Tr>
+              ))}
+            </tbody>
+          </Table>
+          {pagination && pagination.totalPages > 1 && (
+            <div className="flex items-center justify-between border-t border-ink-100 px-4 py-3">
+              <p className="text-xs text-ink-500">Page {pagination.page} of {pagination.totalPages} · {pagination.total} total</p>
+              <div className="flex gap-1.5">
+                <Button variant="secondary" disabled={!pagination.hasPrev} onClick={() => setPage((p) => p - 1)}><ChevronLeft size={15} /> Prev</Button>
+                <Button variant="secondary" disabled={!pagination.hasNext} onClick={() => setPage((p) => p + 1)}>Next <ChevronRight size={15} /></Button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </Card>
   );
 }
@@ -462,51 +502,220 @@ function AnalyticsTab() {
 }
 
 // ---- Settings --------------------------------------------------------------
+/**
+ * SettingsTab -- real, backend-connected WhatsApp Provider Settings.
+ *
+ * Phase 1 scope, confirmed with the user: only META_CLOUD + panelMode
+ * NATIVE has a real, working send/receive/webhook path. Every other
+ * provider is a real, valid, stored enum value with no adapter
+ * implemented yet -- shown in the dropdown but disabled, not hidden, so
+ * the gap is honest.
+ *
+ * Three fields deliberately differ from the original reference design,
+ * each for a specific real-backend reason (confirmed with the user
+ * beforehand):
+ *   - "Default Sender Number" -> read-only, populated by Test Connection
+ *     from Meta's real API response, not a typed field (there's nowhere
+ *     to store a typed value distinct from phoneNumberId).
+ *   - "Webhook URL" -> read-only, computed server-side from
+ *     API_BASE_URL + tenantId, with a copy button. This is OUR receiving
+ *     endpoint, not something a tenant invents.
+ *   - "App Secret" is present here even though the original reference
+ *     design didn't show it -- it's functionally required for webhook
+ *     signature verification (HMAC against this exact value) to work at
+ *     all; without it, real inbound messages could never be verified.
+ */
 function SettingsTab() {
-  const settings = useSettings();
-  const { updateSettings } = useStore();
-  const wa = settings.whatsapp;
-  const [form, setForm] = useState(wa);
+  const { settings, loading, error, updateProvider, updateSync, testConnection, disconnect } = useWhatsAppSettings();
 
-  const save = () => updateSettings({ whatsapp: form });
-  const sync = () => {
-    const r = syncFromProvider(form.provider_name);
-    toast.success('Sync complete', `${r.messages.synced} messages · ${r.templates.synced} templates · ${r.contacts.synced} contacts`);
+  const [provider, setProvider] = useState<WhatsAppProviderReal>('SIMULATION');
+  const [panelMode, setPanelMode] = useState<PanelMode>('NATIVE');
+  const [businessAccountId, setBusinessAccountId] = useState('');
+  const [phoneNumberId, setPhoneNumberId] = useState('');
+  const [accessToken, setAccessToken] = useState('');
+  const [appSecret, setAppSecret] = useState('');
+  const [verifyToken, setVerifyToken] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+
+  useEffect(() => {
+    if (!settings) return;
+    setProvider(settings.provider);
+    setPanelMode(settings.panelMode);
+    setBusinessAccountId(settings.meta.businessAccountId);
+    setPhoneNumberId(settings.meta.phoneNumberId);
+  }, [settings]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await updateProvider({
+        provider,
+        // Was missing entirely before -- providerMode defaults to
+        // 'SIMULATION' in the schema, and resolveProvider() checks THIS
+        // before even looking at which provider is selected. Never
+        // sending it meant every save silently stayed in simulation
+        // regardless of the Provider dropdown. Derived automatically:
+        // picking a real provider means you mean to use it for real.
+        providerMode: provider === 'SIMULATION' ? 'SIMULATION' : 'LIVE',
+        panelMode,
+        meta: {
+          businessAccountId,
+          phoneNumberId,
+          ...(accessToken ? { accessToken } : {}),
+          ...(appSecret ? { appSecret } : {}),
+          ...(verifyToken ? { verifyToken } : {}),
+        },
+      });
+      setAccessToken('');
+      setAppSecret('');
+      setVerifyToken('');
+      toast.success('Settings saved');
+    } catch (err) {
+      toast.error('Could not save settings', err instanceof ApiError ? err.message : 'Please try again.');
+    } finally {
+      setSaving(false);
+    }
   };
+
+  const handleTest = async () => {
+    setTesting(true);
+    try {
+      const result = await testConnection();
+      toast.success('Connection verified', result.displayPhoneNumber ? `Sending as ${result.displayPhoneNumber}` : result.message);
+    } catch (err) {
+      toast.error('Connection test failed', err instanceof ApiError ? err.message : 'Please try again.');
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    if (!window.confirm('Disconnect WhatsApp? Sending/receiving will fall back to Simulation Mode. Your saved credentials are kept, so reconnecting later won\u2019t require re-entering them.')) return;
+    setDisconnecting(true);
+    try {
+      await disconnect();
+      toast.success('WhatsApp disconnected', 'Reverted to Simulation Mode');
+    } catch (err) {
+      toast.error('Could not disconnect', err instanceof ApiError ? err.message : 'Please try again.');
+    } finally {
+      setDisconnecting(false);
+    }
+  };
+
+  const copyWebhookUrl = () => {
+    if (!settings?.meta.webhookUrl) return;
+    navigator.clipboard?.writeText(settings.meta.webhookUrl);
+    toast.success('Webhook URL copied', 'Paste this into your Meta App\u2019s webhook configuration');
+  };
+
+  const handleSyncToggle = async (key: keyof WhatsAppSettingsSync, value: boolean) => {
+    try {
+      await updateSync({ [key]: value });
+    } catch (err) {
+      toast.error('Could not update sync setting', err instanceof ApiError ? err.message : 'Please try again.');
+    }
+  };
+
+  if (loading && !settings) return <Card className="max-w-3xl p-6"><p className="text-sm text-ink-400">Loading settings…</p></Card>;
+  if (error) return <Card className="max-w-3xl p-6"><p className="text-sm text-red-600">{error}</p></Card>;
+  if (!settings) return null;
 
   return (
     <Card className="max-w-3xl p-6">
-      <h3 className="text-sm font-semibold text-ink-900">WhatsApp Provider Settings</h3>
-      <p className="mt-1 text-xs text-ink-500">Choose native InnovateX panel or a third-party BSP. All providers run in simulation mode.</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-ink-900">WhatsApp Provider Settings</h3>
+          <p className="mt-1 text-xs text-ink-500">Choose native InnovateX panel or a third-party BSP. Only Meta Cloud API is fully connected in this phase.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge tone={settings.meta.connected ? 'green' : 'gray'}>{settings.meta.connected ? 'Connected' : 'Not connected'}</Badge>
+          {settings.meta.connected && (
+            <Button variant="secondary" className="px-2.5 py-1 text-xs" onClick={() => void handleDisconnect()} disabled={disconnecting}>
+              {disconnecting ? 'Disconnecting…' : 'Disconnect'}
+            </Button>
+          )}
+        </div>
+      </div>
 
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <Field label="WhatsApp mode">
-          <Select value={form.whatsapp_mode} onChange={(e) => setForm({ ...form, whatsapp_mode: e.target.value as 'native' | 'third_party' })}>
-            <option value="native">Native InnovateX Panel</option>
-            <option value="third_party">Third-party Provider</option>
+          <Select value={panelMode} onChange={(e) => setPanelMode(e.target.value as PanelMode)}>
+            <option value="NATIVE">Native InnovateX Panel</option>
+            <option value="THIRD_PARTY">Third-party Provider</option>
           </Select>
         </Field>
-        <Field label="Provider"><Select value={form.provider_name} onChange={(e) => setForm({ ...form, provider_name: e.target.value as WhatsAppProvider })}>{PROVIDERS.map((p) => <option key={p}>{p}</option>)}</Select></Field>
-        <Field label="Default sender number"><Input value={form.default_sender_number} onChange={(e) => setForm({ ...form, default_sender_number: e.target.value })} /></Field>
-        <Field label="Phone number ID"><Input value={form.phone_number_id} onChange={(e) => setForm({ ...form, phone_number_id: e.target.value })} /></Field>
-        <Field label="Business account ID"><Input value={form.business_account_id} onChange={(e) => setForm({ ...form, business_account_id: e.target.value })} /></Field>
-        <Field label="Access token"><Input value={form.access_token} onChange={(e) => setForm({ ...form, access_token: e.target.value })} /></Field>
-        <Field label="Webhook URL"><Input value={form.webhook_url} onChange={(e) => setForm({ ...form, webhook_url: e.target.value })} /></Field>
-        <Field label="Verify token"><Input value={form.verify_token} onChange={(e) => setForm({ ...form, verify_token: e.target.value })} /></Field>
+        <Field label="Provider">
+          <Select value={provider} onChange={(e) => setProvider(e.target.value as WhatsAppProviderReal)}>
+            {(Object.keys(PROVIDER_LABELS) as WhatsAppProviderReal[]).map((p) => (
+              <option key={p} value={p} disabled={!IMPLEMENTED_PROVIDERS.includes(p)}>
+                {PROVIDER_LABELS[p]}{!IMPLEMENTED_PROVIDERS.includes(p) ? ' (coming soon)' : ''}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Default sender number">
+          <Input value={settings.meta.displayPhoneNumber || 'Not verified yet — run Test Connection'} readOnly className="bg-ink-50 text-ink-500" />
+        </Field>
+        <Field label="Phone number ID">
+          <Input value={phoneNumberId} onChange={(e) => setPhoneNumberId(e.target.value)} placeholder="e.g. 119128780406310" />
+        </Field>
+        <Field label="Business account ID">
+          <Input value={businessAccountId} onChange={(e) => setBusinessAccountId(e.target.value)} placeholder="e.g. 951181964646443" />
+        </Field>
+        <Field label="Access token">
+          <Input
+            type="password"
+            value={accessToken}
+            onChange={(e) => setAccessToken(e.target.value)}
+            placeholder={settings.meta.hasAccessToken ? 'Already set — leave blank to keep' : 'Paste your Meta access token'}
+          />
+        </Field>
+        <Field label="App secret">
+          <Input
+            type="password"
+            value={appSecret}
+            onChange={(e) => setAppSecret(e.target.value)}
+            placeholder={settings.meta.hasAppSecret ? 'Already set — leave blank to keep' : 'Required to verify inbound webhook signatures'}
+          />
+        </Field>
+        <Field label="Verify token">
+          <Input
+            value={verifyToken}
+            onChange={(e) => setVerifyToken(e.target.value)}
+            placeholder={settings.meta.hasVerifyToken ? 'Already set — leave blank to keep' : 'Choose any string, then paste it into Meta'}
+          />
+        </Field>
+        <div className="sm:col-span-2">
+          <Field label="Webhook URL">
+            <div className="flex gap-2">
+              <Input value={settings.meta.webhookUrl} readOnly className="bg-ink-50 text-ink-500" />
+              <Button variant="secondary" onClick={copyWebhookUrl}><Copy size={14} /> Copy</Button>
+            </div>
+            <p className="mt-1 text-[11px] text-ink-400">Auto-generated for your workspace — paste this into your Meta App's webhook configuration, not the other way around.</p>
+          </Field>
+        </div>
       </div>
 
       <div className="mt-4 space-y-2 rounded-lg border border-ink-100 p-3">
-        {([['sync_templates_enabled', 'Sync templates'], ['sync_messages_enabled', 'Sync messages'], ['sync_contacts_enabled', 'Sync contacts']] as const).map(([k, label]) => (
+        {([
+          ['autoSyncTemplates', 'Sync templates'],
+          ['autoSyncMessages', 'Sync messages'],
+          ['autoSyncContacts', 'Sync contacts'],
+        ] as const).map(([k, label]) => (
           <div key={k} className="flex items-center justify-between">
             <span className="text-sm text-ink-700">{label}</span>
-            <Toggle checked={form[k]} onChange={(v) => setForm({ ...form, [k]: v })} />
+            <Toggle checked={settings.sync[k]} onChange={(v) => void handleSyncToggle(k, v)} />
           </div>
         ))}
       </div>
 
       <div className="mt-4 flex gap-2">
-        <Button onClick={save}>Save settings</Button>
-        <Button variant="secondary" onClick={sync}><RefreshCw size={15} /> Sync now</Button>
+        <Button onClick={() => void handleSave()} disabled={saving}>{saving ? 'Saving…' : 'Save settings'}</Button>
+        <Button variant="secondary" onClick={() => void handleTest()} disabled={testing}>
+          <RefreshCw size={15} className={testing ? 'animate-spin' : ''} /> {testing ? 'Testing…' : 'Test Connection'}
+        </Button>
       </div>
     </Card>
   );

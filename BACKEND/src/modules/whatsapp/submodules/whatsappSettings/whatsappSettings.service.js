@@ -14,6 +14,7 @@
  *     obtain credentials WITHOUT going through the HTTP layer
  */
 import { AppError } from '../../../../shared/helpers/lead.helpers.js';
+import config from '../../../../config/config.js';
 import { whatsappSettingsRepository } from './whatsappSettings.repository.js';
 import {
   DEFAULT_SETTINGS,
@@ -134,7 +135,14 @@ export const whatsappSettingsService = {
         updatedBy: ctx.userId,
       });
     }
-    return sanitize(settings);
+    const safe = sanitize(settings);
+    // Computed fresh on every read, NOT the stored meta.webhookUrl value --
+    // this is OUR receiving endpoint, not something a tenant should type
+    // in. Always reflects whatever API_BASE_URL is currently configured,
+    // so it can't go stale if the backend's public URL changes (e.g. a new
+    // ngrok tunnel after a restart).
+    safe.meta.webhookUrl = `${config.API_BASE_URL}/api/whatsapp/webhooks/meta/${ctx.tenantId}`;
+    return safe;
   },
 
   // ── Generic update (whole document, deep) ──────────────────────────────────
@@ -156,11 +164,24 @@ export const whatsappSettingsService = {
 
     // Provider section can change top-level provider + providerMode + meta.
     if (section === 'provider') {
-      const { provider, providerMode, meta } = sectionPatch;
+      const { provider, providerMode, panelMode, meta } = sectionPatch;
       if (provider) validateProviderConfig(provider, meta || {});
+
+      // Duplicate-connection prevention: a phoneNumberId can only belong to
+      // ONE tenant. The unique partial index on the model is the final
+      // guarantee (holds even under a race), but this pre-check gives a
+      // clear, friendly error instead of a raw MongoDB E11000 leaking out.
+      if (meta?.phoneNumberId) {
+        const existing = await whatsappSettingsRepository.findByPhoneNumberId(meta.phoneNumberId, ctx.tenantId);
+        if (existing) {
+          throw new AppError(409, 'This WhatsApp number is already connected to another workspace. Each number can only be connected to one workspace at a time.');
+        }
+      }
+
       const setOps = {};
       if (provider)     setOps.provider = provider;
       if (providerMode) setOps.providerMode = providerMode;
+      if (panelMode)    setOps.panelMode = panelMode;
       if (meta) Object.assign(setOps, flatten({ meta }));
       setOps.updatedBy = ctx.userId;
       const updated = await whatsappSettingsRepository.update(ctx.tenantId, setOps);
@@ -205,15 +226,42 @@ export const whatsappSettingsService = {
       if (missing.length) {
         throw new AppError(400, `Cannot test connection — missing: ${missing.join(', ')}`);
       }
-      // Future: real Graph API verification call here.
+
+      const graphApiVersion = meta.graphApiVersion || 'v21.0';
+      const url = `https://graph.facebook.com/${graphApiVersion}/${meta.phoneNumberId}?fields=display_phone_number,verified_name`;
+
+      let graphResponse;
+      try {
+        graphResponse = await fetch(url, {
+          headers: { Authorization: `Bearer ${meta.accessToken}` },
+        });
+      } catch (networkError) {
+        throw new AppError(502, `Could not reach Meta's Graph API — ${networkError.message}`);
+      }
+
+      const graphJson = await graphResponse.json().catch(() => ({}));
+
+      if (!graphResponse.ok) {
+        const metaMessage = graphJson?.error?.message || `HTTP ${graphResponse.status}`;
+        throw new AppError(400, `Meta rejected these credentials — ${metaMessage}`);
+      }
+
       const now = new Date();
       await whatsappSettingsRepository.update(ctx.tenantId, {
         'meta.connected': true,
         'meta.connectedAt': now,
         'meta.lastVerifiedAt': now,
+        'meta.displayPhoneNumber': graphJson.display_phone_number || '',
+        'meta.verifiedName': graphJson.verified_name || '',
         updatedBy: ctx.userId,
       });
-      return { connected: true, provider, message: 'Credentials present — verification stamped (live ping pluggable)' };
+      return {
+        connected: true,
+        provider,
+        displayPhoneNumber: graphJson.display_phone_number || '',
+        verifiedName: graphJson.verified_name || '',
+        message: 'Connected — credentials verified against Meta\'s Graph API',
+      };
     }
 
     // Other providers: presence check on access token.
