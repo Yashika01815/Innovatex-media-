@@ -53,6 +53,7 @@ async function getTenantMetaConfig(tenantId) {
 
 async function findOrCreateLeadAndConversation(ctx, waId, profileName) {
   let lead = await leadRepository.findByWhatsAppNumber(ctx.tenantId, waId);
+  console.log(`[WA_INBOUND_DEV] Lead lookup for ${waId}: ${lead ? 'FOUND existing lead ' + (lead.id || lead._id) : 'not found -- will create new'}`);
 
   if (!lead) {
     lead = await leadService.createLead(
@@ -67,10 +68,12 @@ async function findOrCreateLeadAndConversation(ctx, waId, profileName) {
       },
       { skipDuplicateCheck: true },
     );
+    console.log(`[WA_INBOUND_DEV] Created new lead: ${lead.id || lead._id}`);
   }
 
   const leadId = lead.id || String(lead._id);
   let conversation = await conversationRepository.findByPhone(ctx.tenantId, waId);
+  console.log(`[WA_INBOUND_DEV] Conversation lookup for ${waId}: ${conversation ? 'FOUND existing conversation ' + conversation._id : 'not found -- will create new'}`);
 
   if (!conversation) {
     conversation = await conversationRepository.create({
@@ -84,6 +87,7 @@ async function findOrCreateLeadAndConversation(ctx, waId, profileName) {
       last_message_preview: '',
       archived: false,
     });
+    console.log(`[WA_INBOUND_DEV] Created new conversation: ${conversation._id}`);
   }
 
   return conversation;
@@ -95,6 +99,7 @@ export const metaWebhookService = {
     const mode = query['hub.mode'];
     const token = query['hub.verify_token'];
     const challenge = query['hub.challenge'];
+    console.log(`[WA_INBOUND_DEV] handleVerification -- received token="${token}" vs saved token="${config.meta.verifyToken}" -- match=${token === config.meta.verifyToken}`);
 
     if (mode === 'subscribe' && token && token === config.meta.verifyToken) {
       return { verified: true, challenge };
@@ -105,6 +110,7 @@ export const metaWebhookService = {
   async processPayload(tenantId, payload) {
     const ctx = { tenantId, userId: null, role: 'system' };
     const entries = payload?.entry || [];
+    console.log(`[WA_INBOUND_DEV] processPayload -- ${entries.length} entr${entries.length === 1 ? 'y' : 'ies'} in payload`);
 
     for (const entry of entries) {
       for (const change of entry?.changes || []) {
@@ -116,11 +122,16 @@ export const metaWebhookService = {
           if (contact?.wa_id) profileByWaId[contact.wa_id] = contact.profile?.name || '';
         }
 
+        console.log(`[WA_INBOUND_DEV] change.value has ${(value.messages || []).length} message(s) and ${(value.statuses || []).length} status update(s)`);
+
         for (const msg of value.messages || []) {
+          console.log(`[WA_INBOUND_DEV] Processing inbound message from ${msg.from}, type=${msg.type}, id=${msg.id}`);
           await this._handleInboundMessage(ctx, msg, profileByWaId[msg.from]);
+          console.log(`[WA_INBOUND_DEV] Inbound message from ${msg.from} recorded successfully`);
         }
 
         for (const status of value.statuses || []) {
+          console.log(`[WA_INBOUND_DEV] Processing status update: id=${status.id} status=${status.status}`);
           await this._handleStatusUpdate(ctx, status);
         }
       }
@@ -148,16 +159,23 @@ export const metaWebhookService = {
 
   async _handleStatusUpdate(ctx, status) {
     const mapped = META_STATUS_MAP[status.status];
-    if (!mapped) return;
+    if (!mapped) {
+      console.log(`[WA_INBOUND_DEV] Unknown status value "${status.status}" -- ignoring`);
+      return;
+    }
 
     const message = await messageRepository.findByProviderMessageId(ctx.tenantId, status.id);
-    if (!message) return;
+    if (!message) {
+      console.log(`[WA_INBOUND_DEV] Status update for provider_message_id=${status.id} but no matching message found in DB -- ignoring`);
+      return;
+    }
 
     const patch = { status: mapped };
     if (mapped === MESSAGE_STATUS.DELIVERED) patch.delivered_at = new Date(Number(status.timestamp) * 1000);
     if (mapped === MESSAGE_STATUS.READ) patch.read_at = new Date(Number(status.timestamp) * 1000);
 
     await messageRepository.updateById(ctx.tenantId, message._id, patch);
+    console.log(`[WA_INBOUND_DEV] Updated message ${message._id} status -> ${mapped}`);
   },
 
   verifySignature,

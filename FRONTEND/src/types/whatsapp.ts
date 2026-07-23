@@ -9,7 +9,7 @@
  *
  * NOTE on backend fixes made before this integration:
  *   - buildLeadContext() was missing UTM fields + payment_status entirely --
- *     both required by FRONTEND_SPEC section 5. Fixed; both included below.
+ *     both required by FRONTEND_SPEC section 5. Fixed; both included below.  
  *   - MessageStatus was 5 lowercase values, now the real 12-value spec set
  *     (Title Case), including 'Blocked by Opt-Out'.
  *   - sendMessage had NO opt-out guard at all -- fixed; a blocked send

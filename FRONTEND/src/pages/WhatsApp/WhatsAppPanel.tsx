@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   Plus, Send, Sparkles, Copy, CheckCircle2, XCircle, MessageSquare, Server, RefreshCw,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, Trash2, Unplug,
 } from 'lucide-react';
 import { useStore } from '@/store/store';
 import { useDb, useSettings, userName } from '@/store/hooks';
@@ -20,10 +20,14 @@ import { formatCurrency, formatDateTime, timeAgo, percent } from '@/utils/format
 import { toast } from '@/store/toastStore';
 import { useLeads } from '@/hooks/useLeads';
 import { useWhatsAppSettings } from '@/hooks/useWhatsAppSettings';
-import { PROVIDER_LABELS, IMPLEMENTED_PROVIDERS } from '@/types/whatsappSettings';
+// import { useWhatsAppTemplates } from '@/hooks/useWhatsAppTemplates';
+import { useWhatsAppTemplates } from '@/hooks/useWhatsAppTemplates';
+import type { WhatsAppTemplate as WhatsAppTemplateReal } from '@/types/whatsappTemplate';
+import { PROVIDER_LABELS, NATIVE_PROVIDER, THIRD_PARTY_PROVIDER_VALUES, IMPLEMENTED_THIRD_PARTY_PROVIDERS } from '@/types/whatsappSettings';
 import type { WhatsAppProvider as WhatsAppProviderReal, PanelMode, WhatsAppSettingsSync } from '@/types/whatsappSettings';
 import { ApiError } from '@/lib/apiClient';
 import type { WhatsAppTemplate, WhatsAppProvider } from '@/types';
+import { useTemplateApproval } from '@/hooks/useTemplateApproval';
 
 const TABS = [
   { id: 'inbox', label: 'Inbox' },
@@ -45,8 +49,6 @@ const PROVIDERS: WhatsAppProvider[] = ['Native Meta Cloud API', 'WATI', 'Interak
 
 export function WhatsAppPanel() {
   const [tab, setTab] = useState('inbox');
-  const [showBuilder, setShowBuilder] = useState(false);
-  const [editTpl, setEditTpl] = useState<WhatsAppTemplate | null>(null);
 
   return (
     <div>
@@ -54,13 +56,12 @@ export function WhatsAppPanel() {
         title="WhatsApp Operating Panel"
         description="Native InnovateX panel + multi-provider simulation — inbox, templates, campaigns & analytics."
         breadcrumb={['Revenue', 'WhatsApp Panel']}
-        actions={<Button onClick={() => setShowBuilder(true)}><Plus size={16} /> New Template</Button>}
       />
       <div className="mb-4"><Tabs tabs={TABS} active={tab} onChange={setTab} /></div>
 
       {tab === 'inbox' && <Inbox />}
       {tab === 'contacts' && <ContactsTab />}
-      {tab === 'templates' && <TemplatesTab onNew={() => setShowBuilder(true)} onEdit={setEditTpl} />}
+      {tab === 'templates' && <TemplatesTab />}
       {tab === 'approval' && <ApprovalTab />}
       {tab === 'campaigns' && <CampaignsTab broadcast={false} />}
       {tab === 'nurture' && <NurtureMessagesTab />}
@@ -71,9 +72,6 @@ export function WhatsAppPanel() {
       {tab === 'logs' && <LogsTab />}
       {tab === 'analytics' && <AnalyticsTab />}
       {tab === 'settings' && <SettingsTab />}
-
-      {showBuilder && <TemplateBuilder onClose={() => setShowBuilder(false)} />}
-      {editTpl && <TemplateBuilder template={editTpl} onClose={() => setEditTpl(null)} />}
     </div>
   );
 }
@@ -139,102 +137,264 @@ function ContactsTab() {
 }
 
 // ---- Templates -------------------------------------------------------------
-function TemplatesTab({ onNew, onEdit }: { onNew: () => void; onEdit: (t: WhatsAppTemplate) => void }) {
-  const { db, tenantId } = useDb();
-  const { transitionTemplate, createTemplate } = useStore();
-  const templates = db.templates.filter((t) => t.tenant_id === tenantId);
+/**
+ * TemplatesTab -- real data. Status-aware actions use the REAL 7-value
+ * status enum (DRAFT/SUBMITTED/APPROVED/REJECTED/ACTIVE/PAUSED/ARCHIVED),
+ * not the mock's 11-state DEVELOPER_HANDOFF.md workflow -- that fuller
+ * workflow lives in approvalStatus, managed separately by the Template
+ * Approval tab. Confirmed via real Postman testing: activate/pause/archive
+ * are real, working dedicated endpoints; duplicate creates a genuine new
+ * Draft copy with a fresh id/slug.
+ */
+function TemplatesTab() {
+  const { templates, loading, error, refetch, deleteTemplate, duplicateTemplate, activateTemplate, pauseTemplate, archiveTemplate } = useWhatsAppTemplates();
+  const [showBuilder, setShowBuilder] = useState(false);
+  const [editTpl, setEditTpl] = useState<WhatsAppTemplateReal | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
-  const duplicate = (t: WhatsAppTemplate) => createTemplate({ ...t, template_name: t.template_name + '_copy' });
+  const runAction = async (id: string, action: () => Promise<unknown>, successMsg: string, failMsg: string) => {
+    setBusyId(id);
+    try {
+      await action();
+      toast.success(successMsg);
+    } catch (err) {
+      toast.error(failMsg, err instanceof ApiError ? err.message : 'Please try again.');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleDelete = async (t: WhatsAppTemplateReal) => {
+    if (!window.confirm(`Delete "${t.name}"? This cannot be undone.`)) return;
+    await runAction(t.id, () => deleteTemplate(t.id), 'Template deleted', 'Could not delete template');
+  };
+
+  if (loading && templates.length === 0) return <p className="p-8 text-center text-sm text-ink-400">Loading templates…</p>;
+  if (error) return <Card className="p-4 text-sm text-red-600">{error}</Card>;
 
   return (
-    <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-      {templates.map((t) => (
-        <Card key={t.id} className="flex flex-col p-4">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="font-semibold text-ink-900">{t.template_name}</p>
-              <div className="mt-1 flex gap-1.5"><Badge tone="violet">{t.category}</Badge><Badge tone="gray">{t.language}</Badge></div>
+    <div>
+      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+        {templates.map((t) => (
+          <Card key={t.id} className="flex flex-col p-4">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="font-semibold text-ink-900">{t.name}</p>
+                <div className="mt-1 flex gap-1.5"><Badge tone="violet">{t.category}</Badge><Badge tone="gray">{t.languageCode}</Badge></div>
+              </div>
+              <StatusBadge status={t.status} />
             </div>
-            <StatusBadge status={t.status} />
-          </div>
-          <p className="mt-3 line-clamp-3 flex-1 rounded-lg bg-ink-50 p-2.5 text-sm text-ink-600">{t.body_message}</p>
-          {t.variables.length > 0 && <div className="mt-2 flex flex-wrap gap-1">{t.variables.map((v) => <span key={v} className="font-mono text-[11px] text-brand-600">{`{{${v}}}`}</span>)}</div>}
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            <Button variant="secondary" className="px-2.5 py-1 text-xs" onClick={() => onEdit(t)}>Edit</Button>
-            <Button variant="ghost" className="px-2.5 py-1 text-xs" onClick={() => duplicate(t)}><Copy size={12} /> Duplicate</Button>
-            {t.status === 'Draft' && <Button className="px-2.5 py-1 text-xs" onClick={() => transitionTemplate(t.id, 'Submitted for Internal Review')}>Submit for review</Button>}
-            {t.status === 'Provider Approved' && <Button className="px-2.5 py-1 text-xs" onClick={() => transitionTemplate(t.id, 'Active')}>Activate</Button>}
-            {t.status === 'Active' && <Button variant="secondary" className="px-2.5 py-1 text-xs" onClick={() => transitionTemplate(t.id, 'Paused')}>Pause</Button>}
-            {t.status === 'Paused' && <Button className="px-2.5 py-1 text-xs" onClick={() => transitionTemplate(t.id, 'Active')}>Resume</Button>}
-          </div>
-        </Card>
-      ))}
-      <button onClick={onNew} className="flex min-h-[180px] flex-col items-center justify-center rounded-xl border-2 border-dashed border-ink-200 text-ink-400 transition hover:border-brand-300 hover:text-brand-600">
-        <Plus size={24} /><span className="mt-2 text-sm font-medium">New template</span>
-      </button>
+            <p className="mt-3 line-clamp-3 flex-1 rounded-lg bg-ink-50 p-2.5 text-sm text-ink-600">{t.body}</p>
+            {t.variables.length > 0 && <div className="mt-2 flex flex-wrap gap-1">{t.variables.map((v) => <span key={v} className="font-mono text-[11px] text-brand-600">{`{{${v}}}`}</span>)}</div>}
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              <Button variant="secondary" className="px-2.5 py-1 text-xs" onClick={() => setEditTpl(t)}>Edit</Button>
+              <Button
+                variant="ghost" className="px-2.5 py-1 text-xs" disabled={busyId === t.id}
+                onClick={() => void runAction(t.id, () => duplicateTemplate(t.id), 'Template duplicated', 'Could not duplicate template')}
+              ><Copy size={12} /> Duplicate</Button>
+              {(t.status === 'DRAFT' || t.status === 'PAUSED') && (
+                <Button className="px-2.5 py-1 text-xs" disabled={busyId === t.id} onClick={() => void runAction(t.id, () => activateTemplate(t.id), 'Template activated', 'Could not activate template')}>
+                  {t.status === 'PAUSED' ? 'Resume' : 'Activate'}
+                </Button>
+              )}
+              {t.status === 'ACTIVE' && (
+                <Button variant="secondary" className="px-2.5 py-1 text-xs" disabled={busyId === t.id} onClick={() => void runAction(t.id, () => pauseTemplate(t.id), 'Template paused', 'Could not pause template')}>
+                  Pause
+                </Button>
+              )}
+              {t.status !== 'ARCHIVED' && (
+                <Button variant="ghost" className="px-2.5 py-1 text-xs text-ink-500" disabled={busyId === t.id} onClick={() => void runAction(t.id, () => archiveTemplate(t.id), 'Template archived', 'Could not archive template')}>
+                  Archive
+                </Button>
+              )}
+              <button onClick={() => void handleDelete(t)} disabled={busyId === t.id} className="rounded-lg p-1.5 text-ink-400 hover:bg-red-50 hover:text-red-600" title="Delete">
+                <Trash2 size={14} />
+              </button>
+            </div>
+          </Card>
+        ))}
+        <button onClick={() => setShowBuilder(true)} className="flex min-h-[180px] flex-col items-center justify-center rounded-xl border-2 border-dashed border-ink-200 text-ink-400 transition hover:border-brand-300 hover:text-brand-600">
+          <Plus size={24} /><span className="mt-2 text-sm font-medium">New template</span>
+        </button>
+      </div>
+
+      {showBuilder && <TemplateBuilder onClose={() => setShowBuilder(false)} onSaved={refetch} />}
+      {editTpl && <TemplateBuilder template={editTpl} onClose={() => setEditTpl(null)} onSaved={refetch} />}
     </div>
   );
 }
 
 // ---- Approval workflow -----------------------------------------------------
-function ApprovalTab() {
-  const { db, tenantId } = useDb();
-  const { transitionTemplate } = useStore();
-  const templates = db.templates.filter((t) => t.tenant_id === tenantId);
+/**
+ * ApprovalTab -- real, backend-connected. Replaces the old mock version
+ * that read from db.templates / useStore()'s transitionTemplate (in-memory
+ * seed data, never touched the real API -- that's why it always showed
+ * the same handful of fake templates like "proposal_followup" regardless
+ * of what was actually created).
+ *
+ * Reuses useWhatsAppTemplates() for the list -- same data Templates tab
+ * shows, since approvalStatus/transitionHistory/approvalComments/
+ * providerRejectionReason are already real fields on WhatsAppTemplate, no
+ * separate fetch needed. Actions go through useTemplateApproval(), which
+ * calls the real, role-gated, transition-validated endpoints.
+ *
+ * Only three approvalStatus values have a real user-facing action on the
+ * backend right now (see ALLOWED_TRANSITIONS in
+ * templateApproval.constants.js):
+ *   DRAFT                          -> Submit for internal review
+ *   SUBMITTED_FOR_INTERNAL_REVIEW  -> Approve / Request changes / Reject
+ *   INTERNALLY_APPROVED            -> Submit to provider
+ * Everything past SUBMITTED_TO_PROVIDER (PROVIDER_APPROVED,
+ * PROVIDER_REJECTED, PAUSED, DISABLED) is provider-webhook-controlled --
+ * shown as read-only status here, not fake buttons that would just 409.
+ */
+const APPROVAL_STATUS_LABEL: Record<string, string> = {
+  DRAFT: 'Draft',
+  SUBMITTED_FOR_INTERNAL_REVIEW: 'Submitted for Internal Review',
+  INTERNALLY_APPROVED: 'Internally Approved',
+  SUBMITTED_TO_PROVIDER: 'Submitted to Provider',
+  PROVIDER_APPROVED: 'Provider Approved',
+  PROVIDER_REJECTED: 'Provider Rejected',
+  REJECTED: 'Rejected',
+  PAUSED: 'Paused',
+  DISABLED: 'Disabled',
+};
 
-  const actionsFor = (t: WhatsAppTemplate) => {
-    switch (t.status) {
-      case 'Draft': return [{ label: 'Submit for Internal Review', to: 'Submitted for Internal Review' as const, primary: true }];
-      case 'Submitted for Internal Review': return [
-        { label: 'Approve internally', to: 'Internally Approved' as const, primary: true },
-        { label: 'Request changes', to: 'Changes Requested' as const },
-        { label: 'Reject', to: 'Rejected Internally' as const },
-      ];
-      case 'Changes Requested': return [{ label: 'Re-submit', to: 'Submitted for Internal Review' as const, primary: true }];
-      case 'Internally Approved': return [{ label: 'Submit to provider', to: 'Submitted to Provider' as const, primary: true }];
-      case 'Submitted to Provider': return [{ label: 'Simulate provider approval', to: 'Provider Approved' as const, primary: true }, { label: 'Simulate rejection', to: 'Provider Rejected' as const }];
-      case 'Provider Approved': return [{ label: 'Activate', to: 'Active' as const, primary: true }];
-      default: return [];
+const APPROVAL_STATUS_TONE: Record<string, 'gray' | 'violet' | 'green' | 'red' | 'amber' | 'blue'> = {
+  DRAFT: 'gray',
+  SUBMITTED_FOR_INTERNAL_REVIEW: 'blue',
+  INTERNALLY_APPROVED: 'violet',
+  SUBMITTED_TO_PROVIDER: 'amber',
+  PROVIDER_APPROVED: 'green',
+  PROVIDER_REJECTED: 'red',
+  REJECTED: 'red',
+  PAUSED: 'amber',
+  DISABLED: 'gray',
+};
+
+function ApprovalTab() {
+  const { templates, loading, error, refetch } = useWhatsAppTemplates();
+  const { submitForReview, requestChanges, approve, reject, submitToProvider } = useTemplateApproval(refetch);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const runAction = async (id: string, action: () => Promise<unknown>, successMsg: string, failMsg: string) => {
+    setBusyId(id);
+    try {
+      await action();
+      toast.success(successMsg);
+    } catch (err) {
+      toast.error(failMsg, err instanceof ApiError ? err.message : 'Please try again.');
+    } finally {
+      setBusyId(null);
     }
   };
 
+  const handleSubmitForReview = (t: WhatsAppTemplateReal) =>
+    runAction(t.id, () => submitForReview(t.id), 'Submitted for internal review', 'Could not submit for review');
+
+  const handleApprove = (t: WhatsAppTemplateReal) =>
+    runAction(t.id, () => approve(t.id), 'Template internally approved', 'Could not approve template');
+
+  const handleRequestChanges = (t: WhatsAppTemplateReal) => {
+    const comment = window.prompt('What changes are needed? (required)');
+    if (comment === null) return; // cancelled
+    if (!comment.trim()) return toast.error('A comment is required to request changes');
+    return runAction(t.id, () => requestChanges(t.id, comment), 'Changes requested', 'Could not request changes');
+  };
+
+  const handleReject = (t: WhatsAppTemplateReal) => {
+    const comment = window.prompt('Reason for rejection (required)');
+    if (comment === null) return;
+    if (!comment.trim()) return toast.error('A comment is required to reject');
+    return runAction(t.id, () => reject(t.id, comment), 'Template rejected', 'Could not reject template');
+  };
+
+  const handleSubmitToProvider = (t: WhatsAppTemplateReal) =>
+    runAction(t.id, () => submitToProvider(t.id), 'Submitted to provider', 'Could not submit to provider');
+
+  if (loading && templates.length === 0) return <p className="p-8 text-center text-sm text-ink-400">Loading templates…</p>;
+  if (error) return <Card className="p-4 text-sm text-red-600">{error}</Card>;
+
   return (
     <Card>
-      <CardHeader title="Template Approval Workflow" subtitle="Internal review → Provider submission → Active" />
+      <CardHeader title="Template Approval Workflow" subtitle="Internal review → Provider submission → Meta" />
       <div className="divide-y divide-ink-100">
         {templates.map((t) => (
           <div key={t.id} className="px-5 py-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="font-semibold text-ink-900">{t.template_name} <span className="ml-1 text-xs font-normal text-ink-400">v{t.version}</span></p>
-                <p className="mt-0.5 text-sm text-ink-500">{t.category} · {t.language}</p>
+                <p className="font-semibold text-ink-900">{t.name} <span className="ml-1 text-xs font-normal text-ink-400">v{t.version}</span></p>
+                <p className="mt-0.5 text-sm text-ink-500">{t.category} · {t.languageCode}</p>
               </div>
-              <StatusBadge status={t.status} />
+              <Badge tone={APPROVAL_STATUS_TONE[t.approvalStatus] ?? 'gray'}>
+                {APPROVAL_STATUS_LABEL[t.approvalStatus] ?? t.approvalStatus}
+              </Badge>
             </div>
-            {t.rejection_reason && <p className="mt-2 rounded-lg bg-red-50 px-3 py-1.5 text-xs text-red-700">Rejection: {t.rejection_reason}</p>}
-            {/* Status timeline */}
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-ink-400">
-              {t.status_history.map((h, i) => (
-                <span key={i} className="flex items-center gap-1">{i > 0 && <span>→</span>}<span className="rounded bg-ink-100 px-1.5 py-0.5 font-medium text-ink-600">{h.status}</span></span>
-              ))}
-            </div>
-            {t.approval_comments.length > 0 && (
-              <div className="mt-2 space-y-1">
-                {t.approval_comments.map((c, i) => <p key={i} className="text-xs text-ink-500">💬 <span className="font-medium">{userName(db, c.author_id)}</span> ({c.action}): {c.text}</p>)}
-              </div>
+
+            {t.approvalStatus === 'PROVIDER_REJECTED' && (t.providerRejectionReason || t.providerRejectionMessage) && (
+              <p className="mt-2 rounded-lg bg-red-50 px-3 py-1.5 text-xs text-red-700">
+                Meta rejection{t.providerRejectionReason ? ` (${t.providerRejectionReason})` : ''}: {t.providerRejectionMessage || 'No message provided'}
+              </p>
             )}
+            {t.approvalComments && (
+              <p className="mt-2 rounded-lg bg-ink-50 px-3 py-1.5 text-xs text-ink-600">💬 {t.approvalComments}</p>
+            )}
+
+            {/* Transition timeline -- real audit trail, not a fake status_history array */}
+            {t.transitionHistory.length > 0 ? (
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-ink-400">
+                <span className="rounded bg-ink-100 px-1.5 py-0.5 font-medium text-ink-600">{t.transitionHistory[0].fromStatus ?? 'DRAFT'}</span>
+                {t.transitionHistory.map((h, i) => (
+                  <span key={i} className="flex items-center gap-1">
+                    <span>→</span>
+                    <span className="rounded bg-ink-100 px-1.5 py-0.5 font-medium text-ink-600" title={h.action}>{h.toStatus}</span>
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 text-xs text-ink-400">No transitions yet — still in Draft.</p>
+            )}
+
+            {/* Actions -- only for the 3 states that have a real backend action */}
             <div className="mt-3 flex flex-wrap gap-2">
-              {actionsFor(t).map((a) => (
-                <Button key={a.label} variant={a.primary ? 'primary' : 'secondary'} className="px-3 py-1.5 text-xs"
-                  onClick={() => transitionTemplate(t.id, a.to, a.to.includes('Rejected') || a.to.includes('Changes') ? 'Reviewed via approval workflow' : undefined)}>
-                  {a.primary && a.to === 'Internally Approved' && <CheckCircle2 size={13} />}
-                  {a.to.includes('Rejected') && <XCircle size={13} />}
-                  {a.label}
+              {t.approvalStatus === 'DRAFT' && (
+                <Button className="px-3 py-1.5 text-xs" disabled={busyId === t.id} onClick={() => void handleSubmitForReview(t)}>
+                  <Send size={13} /> Submit for Internal Review
                 </Button>
-              ))}
+              )}
+              {t.approvalStatus === 'SUBMITTED_FOR_INTERNAL_REVIEW' && (
+                <>
+                  <Button className="px-3 py-1.5 text-xs" disabled={busyId === t.id} onClick={() => void handleApprove(t)}>
+                    <CheckCircle2 size={13} /> Approve internally
+                  </Button>
+                  <Button variant="secondary" className="px-3 py-1.5 text-xs" disabled={busyId === t.id} onClick={() => void handleRequestChanges(t)}>
+                    Request changes
+                  </Button>
+                  <Button variant="secondary" className="border-red-200 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50" disabled={busyId === t.id} onClick={() => void handleReject(t)}>
+                    <XCircle size={13} /> Reject
+                  </Button>
+                </>
+              )}
+              {t.approvalStatus === 'INTERNALLY_APPROVED' && (
+                <Button className="px-3 py-1.5 text-xs" disabled={busyId === t.id} onClick={() => void handleSubmitToProvider(t)}>
+                  <Send size={13} /> Submit to provider
+                </Button>
+              )}
+              {t.approvalStatus === 'SUBMITTED_TO_PROVIDER' && (
+                <p className="text-xs text-ink-400">Awaiting Meta's review — this updates automatically via webhook.</p>
+              )}
+              {t.approvalStatus === 'PROVIDER_APPROVED' && (
+                <p className="text-xs text-emerald-600">Approved by Meta — usable for sending once activated in the Templates tab.</p>
+              )}
+              {(t.approvalStatus === 'REJECTED' || t.approvalStatus === 'DISABLED') && (
+                <p className="text-xs text-ink-400">This is a terminal state — duplicate the template to start over.</p>
+              )}
             </div>
           </div>
         ))}
+        {templates.length === 0 && (
+          <div className="px-5 py-10 text-center text-sm text-ink-400">No templates yet — create one in the Templates tab first.</div>
+        )}
       </div>
     </Card>
   );
@@ -525,10 +685,103 @@ function AnalyticsTab() {
  *     signature verification (HMAC against this exact value) to work at
  *     all; without it, real inbound messages could never be verified.
  */
+// ---- Settings --------------------------------------------------------------
+/**
+ * SettingsTab -- real, backend-connected WhatsApp Provider Settings.
+ *
+ * Phase 1 scope, confirmed with the user: only META_CLOUD + panelMode
+ * NATIVE has a real, working send/receive/webhook path.
+ *
+ * ARCHITECTURE DECISION (Option B) -- the backend owns execution mode:
+ *   - WhatsApp Mode ('panelMode') is the one real user choice:
+ *       - 'NATIVE' (default): provider is locked to Native Meta Cloud API.
+ *         The Provider dropdown is disabled entirely, not just
+ *         individually-disabled options -- there is only one valid value.
+ *       - 'THIRD_PARTY': the Provider dropdown becomes enabled, offering
+ *         WATI / Interakt / AiSensy / Gallabox / Twilio / 360dialog /
+ *         Custom Webhook -- all shown as "(coming soon)" since none have a
+ *         working adapter yet in this phase.
+ *   - `providerMode` (LIVE / SANDBOX / SIMULATION) is NEVER sent by this
+ *     component. It isn't even on UpdateProviderInput. The backend derives
+ *     it exclusively from a successful Test Connection. Simulation/Sandbox
+ *     are not user-facing concepts anywhere in this screen.
+ *
+ * Three fields deliberately differ from the original reference design,
+ * each for a specific real-backend reason (confirmed with the user
+ * beforehand):
+ *   - "Default Sender Number" -> read-only, populated by Test Connection
+ *     from Meta's real API response, not a typed field (there's nowhere
+ *     to store a typed value distinct from phoneNumberId).
+ *   - "Webhook URL" -> read-only, computed server-side from
+ *     API_BASE_URL + tenantId, with a copy button. This is OUR receiving
+ *     endpoint, not something a tenant invents.
+ *   - "App Secret" is present here even though the original reference
+ *     design didn't show it -- it's functionally required for webhook
+ *     signature verification (HMAC against this exact value) to work at
+ *     all; without it, real inbound messages could never be verified.
+ */
+// ---- Settings --------------------------------------------------------------
+/**
+ * SettingsTab -- real, backend-connected WhatsApp Provider Settings.
+ *
+ * Test Connection UX improvements over the previous version:
+ *   - Result is no longer toast-only (which disappears and is easy to
+ *     miss). A persistent inline status panel shows: connected number +
+ *     verified name on success, OR the actual error message on failure --
+ *     both stay visible until the next action, not just a few seconds.
+ *   - "Last verified" relative time is shown next to the Live/Not-verified
+ *     badge, sourced from settings.meta.lastVerifiedAt.
+ *   - Test Connection is disabled until the fields it actually needs
+ *     (phoneNumberId, businessAccountId, and an access token -- either
+ *     freshly typed or already saved) are present, with a hint explaining
+ *     why it's disabled, instead of letting people click it and get a
+ *     generic 400.
+ *   - Editing any credential field clears the previous test result, so a
+ *     stale "Connected" panel can't sit there next to different,
+ *     untested credentials.
+ */
+// ---- Settings --------------------------------------------------------------
+/**
+ * SettingsTab -- real, backend-connected WhatsApp Provider Settings.
+ *
+ * Latest fixes:
+ *   - Save settings now actually validates required Native Meta Cloud
+ *     fields (Phone Number ID, Business Account ID, Access Token) before
+ *     submitting, instead of silently accepting a half-filled form. The
+ *     button is disabled while required fields are missing, and once a
+ *     save is attempted, the specific missing fields get a red border +
+ *     "Required" hint so it's obvious what's blocking it.
+ *   - Disconnect is now a quiet text link under the status badges instead
+ *     of a bordered button sitting next to them -- it's a destructive,
+ *     infrequent action and shouldn't visually compete with "Save
+ *     settings" / "Test Connection".
+ *   - Test Connection result is a persistent inline panel (not just a
+ *     toast), "Last verified" relative time shown, Test Connection
+ *     disabled until required fields are present.
+ */
+// ---- Settings --------------------------------------------------------------
+/**
+ * SettingsTab -- real, backend-connected WhatsApp Provider Settings.
+ *
+ * Latest fixes:
+ *   - Save settings now actually validates required Native Meta Cloud
+ *     fields (Phone Number ID, Business Account ID, Access Token) before
+ *     submitting, instead of silently accepting a half-filled form. The
+ *     button is disabled while required fields are missing, and once a
+ *     save is attempted, the specific missing fields get a red border +
+ *     "Required" hint so it's obvious what's blocking it.
+ *   - Disconnect is now a quiet text link under the status badges instead
+ *     of a bordered button sitting next to them -- it's a destructive,
+ *     infrequent action and shouldn't visually compete with "Save
+ *     settings" / "Test Connection".
+ *   - Test Connection result is a persistent inline panel (not just a
+ *     toast), "Last verified" relative time shown, Test Connection
+ *     disabled until required fields are present.
+ */
 function SettingsTab() {
   const { settings, loading, error, updateProvider, updateSync, testConnection, disconnect } = useWhatsAppSettings();
 
-  const [provider, setProvider] = useState<WhatsAppProviderReal>('SIMULATION');
+  const [provider, setProvider] = useState<WhatsAppProviderReal>(NATIVE_PROVIDER);
   const [panelMode, setPanelMode] = useState<PanelMode>('NATIVE');
   const [businessAccountId, setBusinessAccountId] = useState('');
   const [phoneNumberId, setPhoneNumberId] = useState('');
@@ -538,28 +791,53 @@ function SettingsTab() {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [attemptedSave, setAttemptedSave] = useState(false);
+
+  const [testResult, setTestResult] = useState<{ displayPhoneNumber?: string; verifiedName?: string; message: string } | null>(null);
+  const [testError, setTestError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!settings) return;
-    setProvider(settings.provider);
     setPanelMode(settings.panelMode);
+    setProvider(settings.panelMode === 'NATIVE' ? NATIVE_PROVIDER : settings.provider);
     setBusinessAccountId(settings.meta.businessAccountId);
     setPhoneNumberId(settings.meta.phoneNumberId);
   }, [settings]);
 
+  const clearTestFeedback = () => { setTestResult(null); setTestError(null); };
+
+  const handlePanelModeChange = (next: PanelMode) => {
+    setPanelMode(next);
+    if (next === 'NATIVE') setProvider(NATIVE_PROVIDER);
+    clearTestFeedback();
+    setAttemptedSave(false);
+  };
+
+  const hasPhoneNumberId = phoneNumberId.trim().length > 0;
+  const hasBusinessAccountId = businessAccountId.trim().length > 0;
+  const hasAccessToken = accessToken.trim().length > 0 || Boolean(settings?.meta.hasAccessToken);
+
+  // Native Meta Cloud needs all three before it can ever be tested/used --
+  // this is the same requirement Save and Test Connection both enforce.
+  const nativeFieldsComplete = hasPhoneNumberId && hasBusinessAccountId && hasAccessToken;
+  const canSave = panelMode !== 'NATIVE' || nativeFieldsComplete;
+  const canTest = panelMode === 'NATIVE' && nativeFieldsComplete;
+
+  const fieldError = (ok: boolean) => attemptedSave && panelMode === 'NATIVE' && !ok;
+
   const handleSave = async () => {
+    setAttemptedSave(true);
+    if (!canSave) {
+      toast.error('Missing required fields', 'Enter Phone Number ID, Business Account ID, and an Access Token before saving.');
+      return;
+    }
     setSaving(true);
     try {
       await updateProvider({
-        provider,
-        // Was missing entirely before -- providerMode defaults to
-        // 'SIMULATION' in the schema, and resolveProvider() checks THIS
-        // before even looking at which provider is selected. Never
-        // sending it meant every save silently stayed in simulation
-        // regardless of the Provider dropdown. Derived automatically:
-        // picking a real provider means you mean to use it for real.
-        providerMode: provider === 'SIMULATION' ? 'SIMULATION' : 'LIVE',
+        provider: panelMode === 'NATIVE' ? NATIVE_PROVIDER : provider,
         panelMode,
+        // providerMode is deliberately NOT sent -- backend-derived only,
+        // see Architecture Decision, Option B.
         meta: {
           businessAccountId,
           phoneNumberId,
@@ -571,6 +849,8 @@ function SettingsTab() {
       setAccessToken('');
       setAppSecret('');
       setVerifyToken('');
+      clearTestFeedback();
+      setAttemptedSave(false);
       toast.success('Settings saved');
     } catch (err) {
       toast.error('Could not save settings', err instanceof ApiError ? err.message : 'Please try again.');
@@ -581,22 +861,28 @@ function SettingsTab() {
 
   const handleTest = async () => {
     setTesting(true);
+    setTestResult(null);
+    setTestError(null);
     try {
       const result = await testConnection();
-      toast.success('Connection verified', result.displayPhoneNumber ? `Sending as ${result.displayPhoneNumber}` : result.message);
+      setTestResult({ displayPhoneNumber: result.displayPhoneNumber, verifiedName: result.verifiedName, message: result.message });
+      toast.success('Connection verified');
     } catch (err) {
-      toast.error('Connection test failed', err instanceof ApiError ? err.message : 'Please try again.');
+      const message = err instanceof ApiError ? err.message : 'Please try again.';
+      setTestError(message);
+      toast.error('Connection test failed');
     } finally {
       setTesting(false);
     }
   };
 
   const handleDisconnect = async () => {
-    if (!window.confirm('Disconnect WhatsApp? Sending/receiving will fall back to Simulation Mode. Your saved credentials are kept, so reconnecting later won\u2019t require re-entering them.')) return;
+    if (!window.confirm('Disconnect WhatsApp? Your saved credentials are kept, so reconnecting later won\u2019t require re-entering them.')) return;
     setDisconnecting(true);
     try {
       await disconnect();
-      toast.success('WhatsApp disconnected', 'Reverted to Simulation Mode');
+      clearTestFeedback();
+      toast.success('WhatsApp disconnected');
     } catch (err) {
       toast.error('Could not disconnect', err instanceof ApiError ? err.message : 'Please try again.');
     } finally {
@@ -624,16 +910,29 @@ function SettingsTab() {
 
   return (
     <Card className="max-w-3xl p-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between">
         <div>
           <h3 className="text-sm font-semibold text-ink-900">WhatsApp Provider Settings</h3>
           <p className="mt-1 text-xs text-ink-500">Choose native InnovateX panel or a third-party BSP. Only Meta Cloud API is fully connected in this phase.</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Badge tone={settings.meta.connected ? 'green' : 'gray'}>{settings.meta.connected ? 'Connected' : 'Not connected'}</Badge>
+        <div className="flex flex-col items-end gap-1">
+          <div className="flex items-center gap-2">
+            <Badge tone={settings.providerMode === 'LIVE' ? 'green' : 'amber'}>
+              {settings.providerMode === 'LIVE' ? 'Live' : 'Not verified yet'}
+            </Badge>
+            <Badge tone={settings.meta.connected ? 'green' : 'gray'}>{settings.meta.connected ? 'Connected' : 'Not connected'}</Badge>
+          </div>
+          {settings.meta.lastVerifiedAt && (
+            <p className="text-[11px] text-ink-400">Last verified {timeAgo(settings.meta.lastVerifiedAt)}</p>
+          )}
           {settings.meta.connected && (
-            <Button variant="secondary" className="px-2.5 py-1 text-xs" onClick={() => void handleDisconnect()} disabled={disconnecting}>
-              {disconnecting ? 'Disconnecting…' : 'Disconnect'}
+            <Button
+              variant="secondary"
+              className="border-red-200 px-2.5 py-1 text-xs text-red-600 hover:border-red-300 hover:bg-red-50"
+              onClick={() => void handleDisconnect()}
+              disabled={disconnecting}
+            >
+              <Unplug size={13} /> {disconnecting ? 'Disconnecting…' : 'Disconnect'}
             </Button>
           )}
         </div>
@@ -641,36 +940,59 @@ function SettingsTab() {
 
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <Field label="WhatsApp mode">
-          <Select value={panelMode} onChange={(e) => setPanelMode(e.target.value as PanelMode)}>
+          <Select value={panelMode} onChange={(e) => handlePanelModeChange(e.target.value as PanelMode)}>
             <option value="NATIVE">Native InnovateX Panel</option>
             <option value="THIRD_PARTY">Third-party Provider</option>
           </Select>
         </Field>
         <Field label="Provider">
-          <Select value={provider} onChange={(e) => setProvider(e.target.value as WhatsAppProviderReal)}>
-            {(Object.keys(PROVIDER_LABELS) as WhatsAppProviderReal[]).map((p) => (
-              <option key={p} value={p} disabled={!IMPLEMENTED_PROVIDERS.includes(p)}>
-                {PROVIDER_LABELS[p]}{!IMPLEMENTED_PROVIDERS.includes(p) ? ' (coming soon)' : ''}
-              </option>
-            ))}
-          </Select>
+          {panelMode === 'NATIVE' ? (
+            <>
+              <Select value={NATIVE_PROVIDER} disabled>
+                <option value={NATIVE_PROVIDER}>{PROVIDER_LABELS[NATIVE_PROVIDER]}</option>
+              </Select>
+              <p className="mt-1 text-[11px] text-ink-400">Locked to Native Meta Cloud API while WhatsApp mode is Native InnovateX Panel.</p>
+            </>
+          ) : (
+            <Select value={provider} onChange={(e) => { setProvider(e.target.value as WhatsAppProviderReal); clearTestFeedback(); }}>
+              {THIRD_PARTY_PROVIDER_VALUES.map((p) => (
+                <option key={p} value={p} disabled={!IMPLEMENTED_THIRD_PARTY_PROVIDERS.includes(p)}>
+                  {PROVIDER_LABELS[p]}{!IMPLEMENTED_THIRD_PARTY_PROVIDERS.includes(p) ? ' (coming soon)' : ''}
+                </option>
+              ))}
+            </Select>
+          )}
         </Field>
         <Field label="Default sender number">
           <Input value={settings.meta.displayPhoneNumber || 'Not verified yet — run Test Connection'} readOnly className="bg-ink-50 text-ink-500" />
         </Field>
         <Field label="Phone number ID">
-          <Input value={phoneNumberId} onChange={(e) => setPhoneNumberId(e.target.value)} placeholder="e.g. 119128780406310" />
+          <Input
+            value={phoneNumberId}
+            onChange={(e) => { setPhoneNumberId(e.target.value); clearTestFeedback(); }}
+            placeholder="e.g. 119128780406310"
+            className={fieldError(hasPhoneNumberId) ? 'border-red-300 focus:border-red-400' : ''}
+          />
+          {fieldError(hasPhoneNumberId) && <p className="mt-1 text-[11px] text-red-600">Required</p>}
         </Field>
         <Field label="Business account ID">
-          <Input value={businessAccountId} onChange={(e) => setBusinessAccountId(e.target.value)} placeholder="e.g. 951181964646443" />
+          <Input
+            value={businessAccountId}
+            onChange={(e) => { setBusinessAccountId(e.target.value); clearTestFeedback(); }}
+            placeholder="e.g. 951181964646443"
+            className={fieldError(hasBusinessAccountId) ? 'border-red-300 focus:border-red-400' : ''}
+          />
+          {fieldError(hasBusinessAccountId) && <p className="mt-1 text-[11px] text-red-600">Required</p>}
         </Field>
         <Field label="Access token">
           <Input
             type="password"
             value={accessToken}
-            onChange={(e) => setAccessToken(e.target.value)}
+            onChange={(e) => { setAccessToken(e.target.value); clearTestFeedback(); }}
             placeholder={settings.meta.hasAccessToken ? 'Already set — leave blank to keep' : 'Paste your Meta access token'}
+            className={fieldError(hasAccessToken) ? 'border-red-300 focus:border-red-400' : ''}
           />
+          {fieldError(hasAccessToken) && <p className="mt-1 text-[11px] text-red-600">Required</p>}
         </Field>
         <Field label="App secret">
           <Input
@@ -711,12 +1033,42 @@ function SettingsTab() {
         ))}
       </div>
 
-      <div className="mt-4 flex gap-2">
-        <Button onClick={() => void handleSave()} disabled={saving}>{saving ? 'Saving…' : 'Save settings'}</Button>
-        <Button variant="secondary" onClick={() => void handleTest()} disabled={testing}>
+      <div className="mt-4 flex items-center gap-2">
+        <Button onClick={() => void handleSave()} disabled={saving || (attemptedSave && !canSave)}>
+          {saving ? 'Saving…' : 'Save settings'}
+        </Button>
+        <Button variant="secondary" onClick={() => void handleTest()} disabled={testing || !canTest}>
           <RefreshCw size={15} className={testing ? 'animate-spin' : ''} /> {testing ? 'Testing…' : 'Test Connection'}
         </Button>
       </div>
+      {panelMode !== 'NATIVE' && (
+        <p className="mt-2 text-[11px] text-ink-400">Test Connection is only available for Native Meta Cloud API in this phase.</p>
+      )}
+      {panelMode === 'NATIVE' && !nativeFieldsComplete && (
+        <p className="mt-2 text-[11px] text-amber-600">Enter Phone Number ID, Business Account ID, and an Access Token before saving or testing.</p>
+      )}
+
+      {/* Persistent inline result -- doesn't disappear like a toast does. */}
+      {testResult && (
+        <div className="mt-3 flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+          <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-600" />
+          <div className="text-sm text-emerald-800">
+            <p className="font-medium">Connected — verified against Meta's Graph API</p>
+            {testResult.displayPhoneNumber && (
+              <p className="mt-0.5 text-emerald-700">Sending as {testResult.displayPhoneNumber}{testResult.verifiedName ? ` (${testResult.verifiedName})` : ''}</p>
+            )}
+          </div>
+        </div>
+      )}
+      {testError && (
+        <div className="mt-3 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3">
+          <XCircle size={16} className="mt-0.5 shrink-0 text-red-600" />
+          <div className="text-sm text-red-800">
+            <p className="font-medium">Connection test failed</p>
+            <p className="mt-0.5 text-red-700">{testError}</p>
+          </div>
+        </div>
+      )}
     </Card>
   );
 }

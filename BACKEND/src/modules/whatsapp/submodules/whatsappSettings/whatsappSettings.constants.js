@@ -20,7 +20,29 @@ export const PROVIDER = Object.freeze({
 });
 export const PROVIDER_VALUES = Object.freeze(Object.values(PROVIDER));
 
+// Providers selectable when panelMode = THIRD_PARTY. Excludes META_CLOUD
+// (that's the NATIVE-only provider, forced server-side) and SIMULATION
+// (internal-only value, never a user-facing choice).
+export const THIRD_PARTY_PROVIDER_VALUES = Object.freeze(
+  PROVIDER_VALUES.filter((p) => p !== PROVIDER.META_CLOUD && p !== PROVIDER.SIMULATION),
+);
+
+// Providers with a real, working adapter (Graph API calls, template
+// submit, webhooks). Everything else in PROVIDER is a real stored enum
+// value with no implementation yet -- testConnection() and template
+// submission return a "coming soon" error for them rather than faking
+// success.
+export const IMPLEMENTED_PROVIDERS = Object.freeze([PROVIDER.META_CLOUD]);
+
 // ── Provider mode ──────────────────────────────────────────────────────────────
+// NOT user-facing and NEVER accepted from a client request body (see
+// whatsappSettings.service.js#resolveProviderFields and
+// whatsappSettings.validator.js). The backend owns this value exclusively:
+//   - reset to SIMULATION ("unverified / not yet proven live") whenever
+//     `provider` changes
+//   - flipped to LIVE only inside testConnection(), only after a real
+//     successful Meta Graph API response
+// SANDBOX is a reserved value for future use; nothing sets it yet.
 export const PROVIDER_MODE = Object.freeze({
   LIVE:       'LIVE',
   SANDBOX:    'SANDBOX',
@@ -28,13 +50,13 @@ export const PROVIDER_MODE = Object.freeze({
 });
 export const PROVIDER_MODE_VALUES = Object.freeze(Object.values(PROVIDER_MODE));
 
-// ── Panel mode -- whether InnovateX's own Inbox is the real send/receive
-// surface (NATIVE) or the tenant's WhatsApp activity actually lives in a
-// third-party BSP's own dashboard (THIRD_PARTY), with InnovateX as a
-// secondary view. Phase 1 scope: only NATIVE + META_CLOUD has a real,
-// working send/receive/webhook/realtime path. THIRD_PARTY is a real,
-// stored value but has no implemented behavior yet -- same "real enum,
-// not-yet-implemented adapter" pattern as the other 8 provider values.
+// ── Panel mode -- the one real user-facing choice. Governs `provider`:
+//   NATIVE       -> provider is locked to META_CLOUD server-side.
+//   THIRD_PARTY  -> provider is a user choice from THIRD_PARTY_PROVIDER_VALUES.
+// Phase 1 scope: only NATIVE + META_CLOUD has a real, working
+// send/receive/webhook/realtime/template-submit path. THIRD_PARTY
+// providers are real, stored enum values with the architecture in place,
+// but no working adapter yet ("coming soon").
 export const PANEL_MODE = Object.freeze({
   NATIVE: 'NATIVE',
   THIRD_PARTY: 'THIRD_PARTY',
@@ -87,8 +109,12 @@ export const SENSITIVE_FIELDS = Object.freeze([
 
 // ── Default settings document (deep-merged on create) ──────────────────────────
 export const DEFAULT_SETTINGS = Object.freeze({
-  provider:     PROVIDER.SIMULATION,
+  // panelMode NATIVE (default) means provider is automatically Native Meta
+  // Cloud API -- see Architecture Decision, Option B. providerMode starts
+  // "unverified" until a real Test Connection succeeds.
+  provider:     PROVIDER.META_CLOUD,
   providerMode: PROVIDER_MODE.SIMULATION,
+  panelMode:    PANEL_MODE.NATIVE,
 
   meta: {
     businessAccountId: '',
@@ -192,6 +218,9 @@ export const DEFAULT_SETTINGS = Object.freeze({
   },
 
   advanced: {
+    // DEPRECATED -- unused by any code path. providerMode is the single
+    // source of truth for "is this live now". Left in place only for
+    // backward compatibility with old documents; do not read or write it.
     simulationMode:  true,
     developerMode:   false,
     debugMode:       false,

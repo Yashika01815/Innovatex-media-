@@ -57,10 +57,16 @@ export function useWhatsAppSettings(): UseWhatsAppSettingsResult {
     return result;
   }, [refetch]);
 
+  /**
+   * Disconnect only clears the connection state -- it does NOT touch
+   * `provider` or `panelMode`, and it never sends `providerMode` (that
+   * field isn't even accepted by the backend). Whatever provider/mode the
+   * tenant had configured stays configured; they just need to Test
+   * Connection again to go back to 'LIVE'. Credentials are kept
+   * server-side, so reconnecting doesn't require re-entering them.
+   */
   const disconnect = useCallback(async () => {
     const updated = await whatsappSettingsApi.updateProvider({
-      provider: 'SIMULATION',
-      providerMode: 'SIMULATION',
       meta: { connected: false },
     });
     setSettings(updated);

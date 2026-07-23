@@ -159,6 +159,7 @@ const limitsSchema = new Schema(
 
 const advancedSchema = new Schema(
   {
+    // DEPRECATED -- see whatsappSettings.constants.js DEFAULT_SETTINGS.advanced.
     simulationMode:  { type: Boolean, default: true },
     developerMode:   { type: Boolean, default: false },
     debugMode:       { type: Boolean, default: false },
@@ -171,7 +172,12 @@ const whatsappSettingsSchema = new Schema(
   {
     tenantId: { type: String, required: true, unique: true },
 
-    provider:     { type: String, enum: PROVIDER_VALUES, default: PROVIDER.SIMULATION },
+    // Schema-level defaults kept in sync with DEFAULT_SETTINGS: panelMode
+    // NATIVE means provider is automatically META_CLOUD (Architecture
+    // Decision, Option B). providerMode starts "unverified" (SIMULATION)
+    // until a real Test Connection succeeds -- it is never client-settable
+    // (enforced in whatsappSettings.service.js / .validator.js, not here).
+    provider:     { type: String, enum: PROVIDER_VALUES, default: PROVIDER.META_CLOUD },
     providerMode: { type: String, enum: PROVIDER_MODE_VALUES, default: PROVIDER_MODE.SIMULATION },
     panelMode:    { type: String, enum: PANEL_MODE_VALUES, default: PANEL_MODE.NATIVE },
 
