@@ -86,6 +86,17 @@ export const callPermissions = {
 };
 
 /**
+ * Qualification permissions -- mirrors qualification.routes.js exactly:
+ *   GET routes: no requireRole -- any authenticated role can read.
+ *   POST /run, POST /:id/apply, PATCH /:id/override all require sales_user+.
+ */
+export const qualificationPermissions = {
+  canRun: (role: AuthRole | null | undefined) => atLeast(role, 'sales_user'),
+  canApply: (role: AuthRole | null | undefined) => atLeast(role, 'sales_user'),
+  canOverride: (role: AuthRole | null | undefined) => atLeast(role, 'sales_user'),
+};
+
+/**
  * super_admin-only gate -- used for nav visibility. This is the ONE case
  * where hiding an entire section (not just an action) is correct, because
  * Super Admin routes operate in a fundamentally different, tenant-less

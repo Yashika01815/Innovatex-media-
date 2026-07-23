@@ -1,5 +1,5 @@
 import { useAuthStore } from '@/store/authStore';
-import { leadPermissions, dealPermissions, bookingPermissions, callPermissions, isSuperAdmin } from '@/lib/permissions';
+import { leadPermissions, dealPermissions, bookingPermissions, callPermissions, qualificationPermissions, isSuperAdmin } from '@/lib/permissions';
 
 /**
  * usePermissions -- reads the CURRENT user's real role from authStore and
@@ -37,6 +37,11 @@ export function usePermissions() {
       canCreate: callPermissions.canCreate(role),
       canUpdate: callPermissions.canUpdate(role),
       canRegenerateAiSummary: callPermissions.canRegenerateAiSummary(role),
+    },
+    qualification: {
+      canRun: qualificationPermissions.canRun(role),
+      canApply: qualificationPermissions.canApply(role),
+      canOverride: qualificationPermissions.canOverride(role),
     },
   };
 }
