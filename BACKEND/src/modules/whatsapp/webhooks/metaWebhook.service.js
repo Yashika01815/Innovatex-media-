@@ -16,11 +16,25 @@
  * Lead/Conversation (matched via leadRepository.findByWhatsAppNumber /
  * conversationRepository.findByPhone -- see those functions for why exact
  * string matching isn't used).
+ *
+ * FIX (this pass): Meta sends every subscribed webhook field to this SAME
+ * URL, distinguished by `change.field`. This handler used to assume every
+ * change was a message/status change and never even looked at `field` --
+ * so a real `message_template_status_update` event (Meta approving or
+ * rejecting a submitted template) silently produced empty
+ * value.messages/value.statuses arrays and did nothing. Also added:
+ * mirroring delivered/read/failed status updates onto the V2 delivery-logs
+ * entry (deliveryLogsService), not just the Message document -- previously
+ * only the Message record was updated, so the Delivery Logs tab's
+ * status/stats never advanced past SENT/0% even for genuinely delivered
+ * messages.
  */
 
 import crypto from 'crypto';
 import { AppError } from '../../../shared/helpers/lead.helpers.js';
 import { whatsappSettingsService } from '../submodules/whatsappSettings/whatsappSettings.service.js';
+import { templateApprovalService } from '../submodules/templateApproval/templateApproval.service.js';
+import { deliveryLogsService } from '../submodules/deliveryLogs/deliveryLogs.service.js';
 import { conversationRepository } from '../conversations/conversation.repository.js';
 import { messageRepository } from '../messages/message.repository.js';
 import { messageService } from '../messages/message.service.js';
@@ -34,6 +48,30 @@ const META_STATUS_MAP = {
   delivered: MESSAGE_STATUS.DELIVERED,
   read: MESSAGE_STATUS.READ,
   failed: MESSAGE_STATUS.FAILED,
+};
+
+/** Same Meta status strings, mapped onto V2 deliveryLogs' UPPERCASE DELIVERY_STATUS values. */
+const DELIVERY_STATUS_FROM_META_STATUS = {
+  sent: 'SENT',
+  delivered: 'DELIVERED',
+  read: 'READ',
+  failed: 'FAILED',
+};
+
+/**
+ * Meta's real template-rejection `reason` strings (INVALID_FORMAT,
+ * ABUSIVE_CONTENT, SCAM, TAG_CONTENT_MISMATCH, INCORRECT_CATEGORY, ...)
+ * don't line up with our own PROVIDER_REJECTION_REASON enum (SPAM,
+ * POLICY_VIOLATION, MISLEADING_CLAIMS, VARIABLE_USAGE, FORMATTING, OTHER)
+ * -- best-effort map; anything unmapped falls back to OTHER rather than
+ * failing validation and losing the event.
+ */
+const META_REJECTION_REASON_MAP = {
+  INVALID_FORMAT: 'FORMATTING',
+  SCAM: 'SPAM',
+  ABUSIVE_CONTENT: 'POLICY_VIOLATION',
+  TAG_CONTENT_MISMATCH: 'MISLEADING_CLAIMS',
+  INCORRECT_CATEGORY: 'POLICY_VIOLATION',
 };
 
 function verifySignature(rawBody, signatureHeader, appSecret) {
@@ -114,9 +152,25 @@ export const metaWebhookService = {
 
     for (const entry of entries) {
       for (const change of entry?.changes || []) {
+        const field = change?.field;
         const value = change?.value;
         if (!value) continue;
 
+        // Meta sends every subscribed field to this same URL -- `field`
+        // is how they're told apart. Template approval/rejection events
+        // have a completely different value shape (event, message_template_id,
+        // message_template_name, reason) with no `messages`/`statuses`
+        // arrays at all, so they MUST be branched out here rather than
+        // falling through into the messages/statuses loops below, which
+        // would just silently find nothing and do nothing.
+        if (field === 'message_template_status_update') {
+          await this._handleTemplateStatusUpdate(value);
+          continue;
+        }
+
+        // Default path: 'messages' field (or unlabeled, for backward
+        // compatibility with payloads that don't set `field` at all) --
+        // inbound messages + delivery/read/failed status updates.
         const profileByWaId = {};
         for (const contact of value.contacts || []) {
           if (contact?.wa_id) profileByWaId[contact.wa_id] = contact.profile?.name || '';
@@ -167,15 +221,86 @@ export const metaWebhookService = {
     const message = await messageRepository.findByProviderMessageId(ctx.tenantId, status.id);
     if (!message) {
       console.log(`[WA_INBOUND_DEV] Status update for provider_message_id=${status.id} but no matching message found in DB -- ignoring`);
+    } else {
+      const patch = { status: mapped };
+      if (mapped === MESSAGE_STATUS.DELIVERED) patch.delivered_at = new Date(Number(status.timestamp) * 1000);
+      if (mapped === MESSAGE_STATUS.READ) patch.read_at = new Date(Number(status.timestamp) * 1000);
+      await messageRepository.updateById(ctx.tenantId, message._id, patch);
+      console.log(`[WA_INBOUND_DEV] Updated message ${message._id} status -> ${mapped}`);
+    }
+
+    // Mirror the same status onto the V2 delivery-logs entry created at
+    // send time (see message.service.js#sendMessage's deliveryLogsService
+    // .createLog() call). This was missing entirely before -- only the
+    // Message document above was ever updated, so deliveryLogs.status
+    // stayed stuck at SENT forever and the Delivery Logs tab's
+    // Delivered/Read counts and delivery rate never moved past 0, even
+    // for messages that genuinely delivered.
+    const deliveryStatus = DELIVERY_STATUS_FROM_META_STATUS[status.status];
+    if (deliveryStatus) {
+      await deliveryLogsService
+        .processWebhook({
+          tenantId: ctx.tenantId,
+          providerMessageId: status.id,
+          status: deliveryStatus,
+          failureReason: status.status === 'failed' ? 'PROVIDER_ERROR' : undefined,
+          failureCode: status.errors?.[0]?.code != null ? String(status.errors[0].code) : undefined,
+          providerPayload: status,
+        })
+        .catch((err) => {
+          console.log(`[WA_DELIVERY_SYNC] Could not update delivery log for provider_message_id=${status.id} -- ${err.message}`);
+        });
+    }
+  },
+
+  /**
+   * Handles Meta's message_template_status_update webhook field --
+   * template approved/rejected/paused/disabled by Meta's real review.
+   * Resolves the template by providerTemplateId (Meta's message_template_id,
+   * matches providerMetadata.providerTemplateId stored at submit time --
+   * see templateApprovalRepository.findByProviderTemplateId).
+   */
+  async _handleTemplateStatusUpdate(value) {
+    const { event, message_template_id: providerTemplateId, reason } = value || {};
+    console.log(`[WA_TEMPLATE_WEBHOOK] event=${event} providerTemplateId=${providerTemplateId} reason=${reason || '(none)'}`);
+
+    if (!providerTemplateId) {
+      console.log('[WA_TEMPLATE_WEBHOOK] Missing message_template_id -- ignoring');
       return;
     }
 
-    const patch = { status: mapped };
-    if (mapped === MESSAGE_STATUS.DELIVERED) patch.delivered_at = new Date(Number(status.timestamp) * 1000);
-    if (mapped === MESSAGE_STATUS.READ) patch.read_at = new Date(Number(status.timestamp) * 1000);
+    const payload = { providerTemplateId };
 
-    await messageRepository.updateById(ctx.tenantId, message._id, patch);
-    console.log(`[WA_INBOUND_DEV] Updated message ${message._id} status -> ${mapped}`);
+    try {
+      switch (event) {
+        case 'APPROVED':
+          await templateApprovalService.providerApproved(payload);
+          break;
+        case 'REJECTED':
+          await templateApprovalService.providerRejected({
+            ...payload,
+            providerRejectionReason: META_REJECTION_REASON_MAP[reason] || 'OTHER',
+            providerRejectionMessage: reason || null,
+          });
+          break;
+        case 'PAUSED':
+          await templateApprovalService.providerPaused(payload);
+          break;
+        case 'DISABLED':
+          await templateApprovalService.providerDisabled(payload);
+          break;
+        default:
+          console.log(`[WA_TEMPLATE_WEBHOOK] Unhandled event "${event}" -- ignoring`);
+          return;
+      }
+      console.log(`[WA_TEMPLATE_WEBHOOK] Processed "${event}" for providerTemplateId=${providerTemplateId}`);
+    } catch (err) {
+      // Best-effort: Meta redelivers webhooks, and a retry of an
+      // already-processed event (or one that no longer matches the
+      // template's current approvalStatus/ALLOWED_TRANSITIONS) should
+      // not crash processing of the rest of this payload.
+      console.log(`[WA_TEMPLATE_WEBHOOK] Failed to process "${event}" for providerTemplateId=${providerTemplateId} -- ${err.message}`);
+    }
   },
 
   verifySignature,

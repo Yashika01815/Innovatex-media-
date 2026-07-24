@@ -28,6 +28,9 @@ import type { WhatsAppProvider as WhatsAppProviderReal, PanelMode, WhatsAppSetti
 import { ApiError } from '@/lib/apiClient';
 import type { WhatsAppTemplate, WhatsAppProvider } from '@/types';
 import { useTemplateApproval } from '@/hooks/useTemplateApproval';
+import { useDeliveryLogs, useDeliveryLogsStats } from '@/hooks/useDeliveryLogs';
+import type { DeliveryLog, DeliveryStatus, DeliveryProvider } from '@/types/whatsappDeliveryLog';
+import { DELIVERY_PROVIDER_VALUES } from '@/types/whatsappDeliveryLog';
 
 const TABS = [
   { id: 'inbox', label: 'Inbox' },
@@ -593,28 +596,155 @@ function ConsentTab() {
 }
 
 // ---- Delivery logs ---------------------------------------------------------
+// ---- Delivery logs ---------------------------------------------------------
+/**
+ * LogsTab -- real, backend-connected. Replaces the mock db.deliveryLogs
+ * version. Filters (status, provider, search) live in CardHeader's `action`
+ * prop (confirmed against charts/index.tsx: `<CardHeader title={title}
+ * subtitle={subtitle} action={action} />` -- singular `action`, not
+ * `actions`), matching how this codebase actually surfaces header-level
+ * controls rather than guessing at a prop shape.
+ *
+ * Stats cards come from GET /delivery-logs/stats, computed server-side via
+ * aggregation -- not client-computed from whatever's on the current page.
+ *
+ * Retry button only shows for FAILED rows (RETRYABLE_STATUSES) -- matches
+ * the backend's own transition guard, so clicking it never just 409s.
+ */
+const DELIVERY_STATUS_TONE: Record<string, 'gray' | 'violet' | 'green' | 'red' | 'amber' | 'blue'> = {
+  QUEUED: 'gray',
+  SENDING: 'blue',
+  SENT: 'violet',
+  DELIVERED: 'green',
+  READ: 'green',
+  FAILED: 'red',
+  EXPIRED: 'amber',
+  DELETED: 'gray',
+};
+
+const DELIVERY_STATUS_FILTER_VALUES: DeliveryStatus[] = [
+  'QUEUED', 'SENDING', 'SENT', 'DELIVERED', 'READ', 'FAILED', 'EXPIRED', 'DELETED',
+];
+
 function LogsTab() {
-  const { db, tenantId } = useDb();
-  const logs = db.deliveryLogs.filter((l) => l.tenant_id === tenantId).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  const [page, setPage] = useState(1);
+  const [status, setStatus] = useState<DeliveryStatus | ''>('');
+  const [provider, setProvider] = useState<DeliveryProvider | ''>('');
+  const [search, setSearch] = useState('');
+  const [retryingId, setRetryingId] = useState<string | null>(null);
+
+  const listQuery = {
+    page,
+    limit: 20,
+    ...(status ? { status } : {}),
+    ...(provider ? { provider } : {}),
+    ...(search ? { search } : {}),
+  };
+
+  const { logs, pagination, loading, error, retry } = useDeliveryLogs(listQuery);
+  const { stats } = useDeliveryLogsStats(status || provider ? { status: status || undefined, provider: provider || undefined } : {});
+
+  const handleRetry = async (log: DeliveryLog) => {
+    setRetryingId(log.id);
+    try {
+      await retry(log.id);
+      toast.success('Message queued for retry');
+    } catch (err) {
+      toast.error('Could not retry message', err instanceof ApiError ? err.message : 'Please try again.');
+    } finally {
+      setRetryingId(null);
+    }
+  };
+
   return (
-    <Card>
-      <CardHeader title="Delivery Logs" subtitle={`${logs.length} messages tracked`} />
-      <Table>
-        <thead><tr><Th>Time</Th><Th>Recipient</Th><Th>Provider</Th><Th>Type</Th><Th>Status</Th><Th>Retries</Th></tr></thead>
-        <tbody>
-          {logs.slice(0, 40).map((l) => (
-            <Tr key={l.id}>
-              <Td className="text-ink-500">{formatDateTime(l.sent_at ?? l.created_at)}</Td>
-              <Td className="font-mono text-xs">{l.recipient}</Td>
-              <Td>{l.provider_name}</Td>
-              <Td className="capitalize">{l.message_type}</Td>
-              <Td><StatusBadge status={l.status} /></Td>
-              <Td>{l.retry_count}</Td>
-            </Tr>
-          ))}
-        </tbody>
-      </Table>
-    </Card>
+    <div className="space-y-4">
+      {stats && (
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <KpiCard label="Total messages" value={stats.totalMessages} icon={<MessageSquare size={18} />} accent="#6366f1" />
+          <KpiCard label="Delivered" value={stats.delivered} icon={<CheckCircle2 size={18} />} accent="#10b981" />
+          <KpiCard label="Failed" value={stats.failed} icon={<XCircle size={18} />} accent="#ef4444" />
+          <KpiCard label="Delivery rate" value={percent(stats.deliveryRate)} icon={<CheckCircle2 size={18} />} accent="#3b82f6" />
+        </div>
+      )}
+
+      <Card>
+        <CardHeader
+          title="Delivery Logs"
+          subtitle={pagination ? `${pagination.total} messages tracked` : 'Loading…'}
+          action={
+            <div className="flex flex-wrap gap-2">
+              <Input
+                value={search}
+                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                placeholder="Search phone, name, message id…"
+                className="w-56 py-1.5 text-sm"
+              />
+              <Select value={status} onChange={(e) => { setStatus(e.target.value as DeliveryStatus | ''); setPage(1); }} className="w-auto py-1.5 text-sm">
+                <option value="">All statuses</option>
+                {DELIVERY_STATUS_FILTER_VALUES.map((s) => <option key={s} value={s}>{s}</option>)}
+              </Select>
+              <Select value={provider} onChange={(e) => { setProvider(e.target.value as DeliveryProvider | ''); setPage(1); }} className="w-auto py-1.5 text-sm">
+                <option value="">All providers</option>
+                {DELIVERY_PROVIDER_VALUES.map((p) => <option key={p} value={p}>{p}</option>)}
+              </Select>
+            </div>
+          }
+        />
+
+        {error ? (
+          <EmptyState title="Couldn't load delivery logs" description={error} />
+        ) : loading && logs.length === 0 ? (
+          <p className="p-8 text-center text-sm text-ink-400">Loading delivery logs…</p>
+        ) : logs.length === 0 ? (
+          <EmptyState title="No delivery logs yet" description="Sent messages will be tracked here." />
+        ) : (
+          <>
+            <Table>
+              <thead><tr><Th>Time</Th><Th>Recipient</Th><Th>Provider</Th><Th>Type</Th><Th>Status</Th><Th>Retries</Th><Th /></tr></thead>
+              <tbody>
+                {logs.map((l) => (
+                  <Tr key={l.id}>
+                    <Td className="text-ink-500">{formatDateTime(l.sentAt ?? l.createdAt)}</Td>
+                    <Td>
+                      <div className="font-mono text-xs">{l.phoneNumber}</div>
+                      {(l.contactName || l.leadName) && <div className="text-xs text-ink-400">{l.contactName || l.leadName}</div>}
+                    </Td>
+                    <Td>{l.provider}</Td>
+                    <Td className="capitalize">{l.messageType.toLowerCase()}</Td>
+                    <Td>
+                      <Badge tone={DELIVERY_STATUS_TONE[l.status] ?? 'gray'}>{l.status}</Badge>
+                      {l.status === 'FAILED' && l.failureReason && (
+                        <span className="ml-1.5 text-[11px] text-red-500">{l.failureReason}</span>
+                      )}
+                    </Td>
+                    <Td>{l.retryCount}</Td>
+                    <Td>
+                      {l.status === 'FAILED' && (
+                        <Button
+                          variant="secondary" className="px-2.5 py-1 text-xs" disabled={retryingId === l.id}
+                          onClick={() => void handleRetry(l)}
+                        >
+                          <RefreshCw size={12} className={retryingId === l.id ? 'animate-spin' : ''} /> Retry
+                        </Button>
+                      )}
+                    </Td>
+                  </Tr>
+                ))}
+              </tbody>
+            </Table>
+            {pagination && pagination.totalPages > 1 && (
+              <div className="flex items-center justify-between border-t border-ink-100 px-4 py-3">
+                <p className="text-xs text-ink-500">Page {pagination.page} of {pagination.totalPages} · {pagination.total} total</p>
+                <div className="flex gap-1.5">
+                  <Button variant="secondary" disabled={!pagination.hasPrev} onClick={() => setPage((p) => p - 1)}><ChevronLeft size={15} /> Prev</Button>
+                  <Button variant="secondary" disabled={!pagination.hasNext} onClick={() => setPage((p) => p + 1)}>Next <ChevronRight size={15} /></Button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </Card>
+    </div>
   );
 }
 

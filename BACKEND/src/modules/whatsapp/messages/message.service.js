@@ -9,7 +9,17 @@ import { emitToTenant } from '../../../realtime/socket.js';
 
 import { messageRepository } from './message.repository.js';
 import { conversationRepository } from '../conversations/conversation.repository.js';
-import { deliveryLogService } from '../delivery-logs/delivery-log.service.js';
+// V2 delivery-logs module -- this is the one whatsappRouter actually mounts
+// at /api/whatsapp/delivery-logs (see whatsapp.routes.js:
+// `whatsappRouter.use('/delivery-logs', deliveryLogsRoutes)` ->
+// submodules/deliveryLogs/), and the one the frontend Delivery Logs tab
+// reads from. This used to import '../delivery-logs/delivery-log.service.js'
+// instead -- a separate, older module (model name 'WhatsAppDeliveryLog',
+// snake_case fields, no validation/retry/stats/webhook support) that writes
+// to a completely different Mongo collection. Every real outbound send was
+// silently logging into a collection nothing in the UI ever reads, so the
+// Delivery Logs tab stayed empty regardless of how many messages were sent.
+import { deliveryLogsService } from '../submodules/deliveryLogs/deliveryLogs.service.js';
 import { getProvider, resolveProvider } from '../providers/provider.factory.js';
 import {
   MESSAGE_DIRECTION,
@@ -34,6 +44,72 @@ async function getConversationOrThrow(ctx, conversationId) {
   const conversation = await conversationRepository.findById(ctx.tenantId, conversationId);
   if (!conversation) throw AppError.notFound('Conversation not found');
   return conversation;
+}
+
+/**
+ * Enum translation between this module's MESSAGE_STATUS (Title Case, e.g.
+ * 'Sent', 'Blocked by Opt-Out') and deliveryLogs V2's DELIVERY_STATUS
+ * (UPPERCASE, e.g. 'SENT'). They are NOT the same set of values --
+ * MESSAGE_STATUS has states V2 has no delivery-tracking equivalent for
+ * (Draft, Pending Approval, Scheduled, Replied, Cancelled, both Blocked-by-*
+ * values), and V2 has SENDING, which this module never sets on a message.
+ * Only the values actually reachable from sendMessage()'s success path are
+ * mapped; anything unexpected falls back to 'SENT' rather than crashing the
+ * log write (see the .catch() at the call site -- this is best-effort
+ * telemetry, not allowed to block a real send).
+ */
+const DELIVERY_STATUS_FROM_MESSAGE_STATUS = Object.freeze({
+  [MESSAGE_STATUS.QUEUED]:    'QUEUED',
+  [MESSAGE_STATUS.SENT]:      'SENT',
+  [MESSAGE_STATUS.DELIVERED]: 'DELIVERED',
+  [MESSAGE_STATUS.READ]:      'READ',
+  [MESSAGE_STATUS.FAILED]:    'FAILED',
+});
+
+/**
+ * V2's PROVIDER enum is UPPERCASE (SIMULATION, META_CLOUD, ...); the
+ * provider factory / concrete provider classes use their own short
+ * lowercase `name` (e.g. SimulationProvider.name === 'simulation',
+ * MetaProvider.name === 'meta' -- NOT 'meta_cloud', confirmed against
+ * meta.provider.js's `get name() { return 'meta'; }` and the literal
+ * `provider: 'meta'` in its sendMessage() return value). Unrecognised
+ * names fall back to SIMULATION rather than throwing -- same reasoning
+ * as above.
+ */
+const DELIVERY_PROVIDER_FROM_NAME = Object.freeze({
+  simulation:      'SIMULATION',
+  meta:            'META_CLOUD',
+  wati:            'WATI',
+  interakt:        'INTERAKT',
+  aisensy:         'AISENSY',
+  gallabox:        'GALLABOX',
+  twilio:          'TWILIO',
+  '360dialog':     '360DIALOG',
+  custom_webhook:  'CUSTOM_WEBHOOK',
+});
+
+/** Builds the V2 deliveryLogsService.createLog() payload from this module's shapes. */
+function toDeliveryLogPayload(conversation, message, transport) {
+  const status = DELIVERY_STATUS_FROM_MESSAGE_STATUS[message.status] || 'SENT';
+  const provider = DELIVERY_PROVIDER_FROM_NAME[String(transport.provider || '').toLowerCase()] || 'SIMULATION';
+  // Legacy MESSAGE_TYPE values (text/image/document/template) are all
+  // valid V2 MESSAGE_TYPE_VALUES once uppercased -- no explicit map needed.
+  const messageType = String(message.type || MESSAGE_TYPE.TEXT).toUpperCase();
+
+  return {
+    messageId: message._id,
+    conversationId: conversation._id,
+    leadId: conversation.lead_id || null,
+    source: 'MANUAL_INBOX',
+    provider,
+    providerMessageId: transport.provider_message_id || null,
+    phoneNumber: conversation.phone,
+    direction: 'OUTBOUND',
+    messageType,
+    status,
+    sentAt: message.sent_at || null,
+    deliveredAt: message.delivered_at || null,
+  };
 }
 
 /**
@@ -198,17 +274,15 @@ export const messageService = {
       delivered_at: transport.delivered_at || null,
     });
 
-    await deliveryLogService.record(ctx, {
-      conversation_id: conversation._id,
-      message_id: message._id,
-      provider: transport.provider,
-      provider_message_id: transport.provider_message_id,
-      recipient: conversation.phone,
-      status: message.status,
-      retries: 0,
-      sent_at: message.sent_at,
-      delivered_at: message.delivered_at,
-    });
+    // Best-effort, same pattern as the createTrackingEvent() calls in this
+    // file: delivery-log telemetry must never block or fail an actual
+    // message send, so failures here are logged, not thrown.
+    await deliveryLogsService
+      .createLog(ctx, toDeliveryLogPayload(conversation, message, transport))
+      .catch((err) => {
+        // eslint-disable-next-line no-console
+        console.error('deliveryLogsService.createLog failed for message', String(message._id), err);
+      });
 
     const updatedConversation = await conversationRepository.updateById(
       ctx.tenantId,
