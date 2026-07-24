@@ -6,6 +6,7 @@
  * WhatsAppTemplate model via templateApprovalRepository.
  */
 import { AppError } from '../../../../shared/helpers/lead.helpers.js';
+import { emitToTenant } from '../../../../realtime/socket.js';
 import { activityService } from '../../../leads/activities/activity.service.js';
 import { ACTIVITY_TYPE } from '../../../leads/activities/activity.model.js';
 import { hasRole, ROLES } from '../../../auth/constants/roles.js';
@@ -387,6 +388,14 @@ export const templateApprovalService = {
 
     await logActivity(ctx, updated, ACTIVITY_TYPE.WHATSAPP_TEMPLATE_PROVIDER_APPROVED,
       'Template approved by provider', { from, to, providerTemplateId: payload.providerTemplateId });
+
+    // Push to any open Template Approval tab for this tenant so it updates
+    // without a manual refresh -- same channel message.service.js already
+    // uses for the Inbox (see realtime/socket.js).
+    emitToTenant(ctx.tenantId, 'whatsapp:template', {
+      templateId: String(updated._id ?? updated.id),
+      template: toTemplateDTO(updated),
+    });
     return toTemplateDTO(updated);
   },
 
@@ -412,6 +421,11 @@ export const templateApprovalService = {
         to,
         providerRejectionReason: payload.providerRejectionReason || null,
       });
+
+    emitToTenant(ctx.tenantId, 'whatsapp:template', {
+      templateId: String(updated._id ?? updated.id),
+      template: toTemplateDTO(updated),
+    });
     return toTemplateDTO(updated);
   },
 
@@ -431,6 +445,11 @@ export const templateApprovalService = {
 
     await logActivity(ctx, updated, ACTIVITY_TYPE.WHATSAPP_TEMPLATE_PAUSED,
       'Template paused by provider (quality drop)', { from, to });
+
+    emitToTenant(ctx.tenantId, 'whatsapp:template', {
+      templateId: String(updated._id ?? updated.id),
+      template: toTemplateDTO(updated),
+    });
     return toTemplateDTO(updated);
   },
 
@@ -450,6 +469,11 @@ export const templateApprovalService = {
 
     await logActivity(ctx, updated, ACTIVITY_TYPE.WHATSAPP_TEMPLATE_DISABLED,
       'Template disabled by provider', { from, to });
+
+    emitToTenant(ctx.tenantId, 'whatsapp:template', {
+      templateId: String(updated._id ?? updated.id),
+      template: toTemplateDTO(updated),
+    });
     return toTemplateDTO(updated);
   },
 

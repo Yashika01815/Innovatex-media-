@@ -31,6 +31,7 @@ import { useTemplateApproval } from '@/hooks/useTemplateApproval';
 import { useDeliveryLogs, useDeliveryLogsStats } from '@/hooks/useDeliveryLogs';
 import type { DeliveryLog, DeliveryStatus, DeliveryProvider } from '@/types/whatsappDeliveryLog';
 import { DELIVERY_PROVIDER_VALUES } from '@/types/whatsappDeliveryLog';
+import { useWhatsAppRealtime } from '@/hooks/useWhatsAppRealtime';
 
 const TABS = [
   { id: 'inbox', label: 'Inbox' },
@@ -278,6 +279,7 @@ const APPROVAL_STATUS_TONE: Record<string, 'gray' | 'violet' | 'green' | 'red' |
 function ApprovalTab() {
   const { templates, loading, error, refetch } = useWhatsAppTemplates();
   const { submitForReview, requestChanges, approve, reject, submitToProvider } = useTemplateApproval(refetch);
+  useWhatsAppRealtime({ onTemplate: refetch });
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const runAction = async (id: string, action: () => Promise<unknown>, successMsg: string, failMsg: string) => {
@@ -641,8 +643,15 @@ function LogsTab() {
     ...(search ? { search } : {}),
   };
 
-  const { logs, pagination, loading, error, retry } = useDeliveryLogs(listQuery);
-  const { stats } = useDeliveryLogsStats(status || provider ? { status: status || undefined, provider: provider || undefined } : {});
+const { logs, pagination, loading, error, retry, refetch } = useDeliveryLogs(listQuery);
+const { stats, refetch: refetchStats } = useDeliveryLogsStats(status || provider ? { status: status || undefined, provider: provider || undefined } : {});
+
+useWhatsAppRealtime({
+  onDeliveryLog: () => {
+    refetch();
+    refetchStats();
+  },
+});
 
   const handleRetry = async (log: DeliveryLog) => {
     setRetryingId(log.id);
